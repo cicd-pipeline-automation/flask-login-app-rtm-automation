@@ -234,16 +234,24 @@ pipeline {
         **********************************************/
         stage('Attach Reports to RTM') {
             steps {
-                echo "📎 Attaching HTML/PDF reports to RTM..."
-                
+                echo "📚 Attaching HTML/PDF reports to RTM..."
+
                 script {
-                    version = readFile('report/version.txt').trim()
+                    // Read version generated earlier
+                    def version = readFile("report/version.txt").trim()
+                    echo "ℹ Using report version: v${version}"
+
+                    def pdfFile = "report/test_result_report_v${version}.pdf"
+                    def htmlFile = "report/test_result_report_v${version}.html"
+
+                    echo "📄 PDF: ${pdfFile}"
+                    echo "🌐 HTML: ${htmlFile}"
                 }
 
                 bat """
-                    "%VENV_PATH%\\Scripts\\python.exe" scripts\\rtm_attach_reports.py ^
-                        --pdf "report\\test_result_report_${version}.pdf" ^
-                        --html "report\\test_result_report_${version}.html"
+                "%VENV_PATH%\\Scripts\\python.exe" scripts\\rtm_attach_reports.py ^
+                    --pdf "report/test_result_report_v${version}.pdf" ^
+                    --html "report/test_result_report_v${version}.html"
                 """
             }
         }
