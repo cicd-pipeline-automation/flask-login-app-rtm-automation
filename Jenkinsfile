@@ -64,6 +64,11 @@ pipeline {
         PYTHONUTF8                  = '1'
         PYTHONIOENCODING            = 'utf-8'
         PYTHONLEGACYWINDOWSSTDIO    = '1'
+
+        // =================================
+        // Python Testing Failure Action
+        // =================================
+        FORCE_FAIL = "false"
     }
 
     parameters {
