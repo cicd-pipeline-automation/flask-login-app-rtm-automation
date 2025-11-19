@@ -245,6 +245,25 @@ pipeline {
                 """
             }
         }
+
+        // ============================
+        // Attach Reports to RTM
+        // ============================
+        stage('Attach Reports to RTM') {
+            when {
+                expression { params.RTM_TEST_EXECUTION_KEY?.trim() }
+            }
+            steps {
+                echo "📎 Attaching HTML/PDF reports to RTM..."
+
+                bat """
+                    "%VENV_PATH%\\Scripts\\python.exe" scripts\\rtm_attach_reports.py ^
+                        --exec "${params.RTM_TEST_EXECUTION_KEY}" ^
+                        --pdf "report\\test_result_report_v2.pdf" ^
+                        --html "report\\test_result_report_v2.html"
+                """
+            }
+        }
     }
 
     post {
