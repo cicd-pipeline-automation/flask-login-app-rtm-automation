@@ -39,7 +39,7 @@ def main():
         }
         response = requests.post(url, headers=headers, files=files, data=data)
 
-    if response.status_code != 200:
+    if response.status_code not in (200, 202):
         print("❌ RTM Upload Failed")
         print("Status:", response.status_code)
         print("Response:", response.text)
