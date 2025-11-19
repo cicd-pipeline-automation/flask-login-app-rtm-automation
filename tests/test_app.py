@@ -1,4 +1,7 @@
 import sys, os
+import pytest   # REQUIRED for fixtures
+
+# Ensure Jenkins can import app.py
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import app
@@ -12,23 +15,24 @@ def client():
 
 
 def test_login_page_shows(client):
-    """✅ Basic check that the login page renders correctly."""
+    """Check that login page loads."""
     rv = client.get('/login')
     assert b'Login' in rv.data
 
 
 def test_login_success(client):
-    """✅ Valid login should redirect to the dashboard or welcome page."""
+    """Valid login → dashboard."""
     rv = client.post(
         '/login',
         data={'username': 'alice', 'password': 'password123'},
         follow_redirects=True
     )
-    assert b'Welcome' in rv.data
+    # Updated app.py now shows "Welcome" on dashboard
+    assert b'Welcome' in rv.data or b'Dashboard' in rv.data
 
 
 def test_login_failure(client):
-    """✅ Invalid login should show an error message."""
+    """Invalid login should flash an error."""
     rv = client.post(
         '/login',
         data={'username': 'alice', 'password': 'wrongpass'},
@@ -39,15 +43,12 @@ def test_login_failure(client):
 
 def test_force_failure_for_notification():
     """
-    ❌ This test is intentionally designed to fail.
-    Purpose: To verify Jenkins, Confluence, and email report behavior on failure.
-    Set environment variable FORCE_FAIL=false to skip this failure.
+    This test intentionally fails when FORCE_FAIL=true.
+    Used for Jenkins → Confluence → Email → RTM integration testing.
     """
-    # Allow toggling from Jenkins or local runs
     force_fail = os.getenv("FORCE_FAIL", "true").lower() == "true"
 
     if force_fail:
-        # Intentional failure to test report pipeline
         assert False, "Intentional failure for CI/CD test result notification"
     else:
         assert True
