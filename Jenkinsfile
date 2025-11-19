@@ -65,6 +65,9 @@ pipeline {
 
         PYTHONUTF8             = '1'
         PYTHONLEGACYWINDOWSSTDIO = '1'
+
+        /* ===================== Test Case Action ====================== */
+        FORCE_FAIL = false
     }
 
     /******************************************************
