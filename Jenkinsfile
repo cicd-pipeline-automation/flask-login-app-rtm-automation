@@ -171,14 +171,14 @@ pipeline {
         /**********************************************
          6️⃣ PUBLISH REPORT TO CONFLUENCE
         **********************************************/
-        stage('Publish Report to Confluence') {
-            steps {
-                echo "🌐 Publishing report to Confluence..."
-                bat """
-                    "%VENV_PATH%\\Scripts\\python.exe" scripts/publish_report_confluence.py
-                """
-            }
-        }
+        // stage('Publish Report to Confluence') {
+        //     steps {
+        //         echo "🌐 Publishing report to Confluence..."
+        //         bat """
+        //             "%VENV_PATH%\\Scripts\\python.exe" scripts/publish_report_confluence.py
+        //         """
+        //     }
+        // }
 
         /**********************************************
          7️⃣ EMAIL REPORT TO STAKEHOLDERS
