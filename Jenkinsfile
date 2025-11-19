@@ -151,10 +151,15 @@ pipeline {
             steps {
                 echo "🧪 Running tests + generating JUnit XML..."
                 bat """
-                if not exist test-results mkdir test-results
-                set PYTHONPATH=%WORKSPACE%
-                "%VENV_PATH%\\Scripts\\pytest.exe" --junitxml=report/junit.xml --result-log=report/pytest_output.txt --html=report/report.html
+                    pip install pytest-html
+                    if not exist report mkdir report
 
+                    "%VENV_PATH%\\Scripts\\pytest.exe" ^
+                        --junitxml=report/junit.xml ^
+                        --log-file=report/pytest_output.txt ^
+                        --log-file-level=INFO ^
+                        --html=report/report.html ^
+                        --self-contained-html
                 """
             }
         }
