@@ -37,7 +37,7 @@ pipeline {
         JIRA_USER         = credentials('jira-user')
         RTM_API_TOKEN     = credentials('rtm-api-key')
         RTM_BASE_URL      = credentials('rtm-base-url')
-        PROJECT_KEY       = 'RTM-TEST'
+        PROJECT_KEY       = 'RT'
         REPORT_TYPE       = 'JUNIT'
         CI_JOB_URL        = "${env.BUILD_URL}"
         TEST_RESULTS_DIR  = 'test-results'
