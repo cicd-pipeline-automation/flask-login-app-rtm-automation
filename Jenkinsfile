@@ -146,14 +146,10 @@ pipeline {
             steps {
                 echo "🧪 Running tests + generating JUnit XML..."
                 bat """
-                    if not exist ${TEST_RESULTS_DIR} mkdir ${TEST_RESULTS_DIR}
-                    "%VENV_PATH%\\Scripts\\pytest.exe" --junitxml=${TEST_RESULTS_DIR}/junit-report.xml
+                if not exist test-results mkdir test-results
+                set PYTHONPATH=%WORKSPACE%
+                "%VENV_PATH%\\Scripts\\pytest.exe" --junitxml=test-results/junit-report.xml
                 """
-            }
-            post {
-                always {
-                    junit allowEmptyResults: true, testResults: "${TEST_RESULTS_DIR}/junit-*.xml"
-                }
             }
         }
 
