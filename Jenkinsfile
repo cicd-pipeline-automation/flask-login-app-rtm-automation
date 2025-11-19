@@ -153,7 +153,8 @@ pipeline {
                 bat """
                 if not exist test-results mkdir test-results
                 set PYTHONPATH=%WORKSPACE%
-                "%VENV_PATH%\\Scripts\\pytest.exe" --junitxml=test-results/junit-report.xml
+                "%VENV_PATH%\\Scripts\\pytest.exe" --junitxml=report/junit.xml --result-log=report/pytest_output.txt --html=report/report.html
+
                 """
             }
         }
