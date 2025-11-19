@@ -1,76 +1,74 @@
 #!/usr/bin/env python3
-import os, sys, time, json, argparse, requests
-from pathlib import Path
+import os
+import argparse
+import requests
+import json
+import time
 
-def args():
-    p = argparse.ArgumentParser()
+
+def parse_args():
+    p = argparse.ArgumentParser(description="Upload test results to RTM")
     p.add_argument("--archive", required=True)
     p.add_argument("--rtm-base", required=True)
     p.add_argument("--project", required=True)
-    p.add_argument("--report-type", default="JUNIT")
-    p.add_argument("--test-exec")
     return p.parse_args()
 
+
 def main():
-    a = args()
-    a.rtm_base = a.rtm_base.rstrip("/")
+    args = parse_args()
 
     token = os.getenv("RTM_API_TOKEN")
     if not token:
-        sys.exit("❌ RTM_API_TOKEN missing in Jenkins environment!")
+        raise SystemExit("❌ Missing RTM_API_TOKEN environment variable")
 
-    archive = Path(a.archive)
-    if not archive.exists():
-        sys.exit(f"❌ Archive file not found: {archive}")
-
+    url = f"{args.rtm_base}/api/v2/automation/import-test-results"
     headers = {"Authorization": f"Bearer {token}"}
-    url = f"{a.rtm_base}/api/v2/automation/import-test-results"
 
-    data = {
-        "projectKey": a.project,
-        "reportType": a.report_type,
-        "jobUrl": os.getenv("BUILD_URL", "")
-    }
+    print("🚀 Uploading ZIP to RTM...")
 
-    if a.test_exec:
-        data["testExecutionKey"] = a.test_exec
-
-    print("🚀 Uploading results to RTM...")
-
-    with archive.open("rb") as f:
+    with open(args.archive, "rb") as f:
         files = {"file": f}
-        r = requests.post(url, headers=headers, data=data, files=files)
+        data = {
+            "projectKey": args.project,
+            "reportType": "JUNIT",
+            "jobUrl": os.getenv("CI_JOB_URL", "N/A")
+        }
+        response = requests.post(url, headers=headers, files=files, data=data)
 
-    if r.status_code >= 400:
+    if response.status_code != 200:
         print("❌ RTM Upload Failed")
-        print("Status:", r.status_code)
-        print("Response:", r.text)
-        sys.exit(1)
+        print("Status:", response.status_code)
+        print("Response:", response.text)
+        return
 
-    task_id = r.text.strip()
+    task_id = response.text.strip()
     print(f"📌 RTM Task ID: {task_id}")
 
-    # Poll status
-    status_url = f"{a.rtm_base}/api/v2/automation/import-status/{task_id}"
-
-    MAX_WAIT = 300
-    start = time.time()
+    # Check status
+    status_url = f"{args.rtm_base}/api/v2/automation/import-status/{task_id}"
 
     while True:
-        if time.time() - start > MAX_WAIT:
-            sys.exit("⏱ Timeout waiting for RTM import to finish.")
+        resp = requests.get(status_url, headers=headers)
+        data = resp.json()
+        print(f"➡️  RTM Status: {data.get('status')} Progress: {data.get('progress')}")
 
-        rr = requests.get(status_url, headers=headers)
-        rr.raise_for_status()
-        status = rr.json()
-
-        print(f"➡️ RTM Status: {status.get('status')} Progress: {status.get('progress', 'N/A')}")
-
-        if status.get("status") != "IMPORTING":
-            print("🎉 Import complete:", json.dumps(status, indent=2))
+        if data.get("status") != "IMPORTING":
             break
+        time.sleep(2)
 
-        time.sleep(3)
+    print("🎉 Import complete:", json.dumps(data, indent=2))
+
+    # Save created test execution key
+    test_exec = data.get("testExecutionKey")
+    if not test_exec:
+        print("⚠ No testExecutionKey returned, cannot write file.")
+        return
+
+    with open("rtm_execution_key.txt", "w") as f:
+        f.write(test_exec)
+
+    print(f"📝 RTM execution key saved -> rtm_execution_key.txt ({test_exec})")
+
 
 if __name__ == "__main__":
     main()

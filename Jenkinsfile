@@ -1,90 +1,90 @@
+/**************************************************************
+ 🏗️  JENKINS PIPELINE — FLASK LOGIN → RTM → JIRA → CONFLUENCE
+ 📌 Purpose:
+     - Run automated tests
+     - Generate HTML/PDF reports
+     - Publish reports to Confluence
+     - Email results to stakeholders
+     - Upload JUnit results to RTM
+     - Attach PDF/HTML reports to RTM via Jira API
+**************************************************************/
+
 pipeline {
     agent any
 
+    /******************************************************
+     🛠️ PIPELINE OPTIONS
+    ******************************************************/
     options {
-        timestamps()
-        disableConcurrentBuilds()
-        skipDefaultCheckout()   // prevents duplicate initial SCM checkout
+        timestamps()                     // Show timestamps in logs
+        disableConcurrentBuilds()        // Avoid parallel overlapping runs
+        skipDefaultCheckout()            // We manually checkout using GitSCM
+        buildDiscarder(logRotator(numToKeepStr: '20')) // Keep last 20 builds
     }
 
+    /******************************************************
+     🔐 SECURE ENVIRONMENT VARIABLES (Credentials + Paths)
+    ******************************************************/
     environment {
+        /* ===================== SMTP ====================== */
+        SMTP_HOST       = credentials('smtp-host')
+        SMTP_PORT       = '587'
+        SMTP_USER       = credentials('smtp-user')
+        SMTP_PASS       = credentials('smtp-pass')
+        REPORT_FROM     = credentials('sender-email')
+        REPORT_TO       = credentials('receiver-email')
+        REPORT_CC       = credentials('cc-email')
+        REPORT_BCC      = credentials('bcc-email')
 
-        // =============================
-        // SMTP Login Credentials Setup
-        // =============================
-        SMTP_HOST        = credentials('smtp-host')
-        SMTP_PORT        = '587'
-        SMTP_USER        = credentials('smtp-user')
-        SMTP_PASS        = credentials('smtp-pass')
-        REPORT_FROM      = credentials('sender-email')
-        REPORT_TO        = credentials('receiver-email')
-        REPORT_CC        = credentials('cc-email')
-        REPORT_BCC       = credentials('bcc-email')
-
-        // ==================================
-        // Confluence Login Credentials Setup
-        // ==================================
+        /* ================ Confluence Access =============== */
         CONFLUENCE_BASE  = credentials('confluence-base')
         CONFLUENCE_USER  = credentials('confluence-user')
         CONFLUENCE_TOKEN = credentials('confluence-token')
-        CONFLUENCE_SPACE = 'DEMO'
-        CONFLUENCE_TITLE = 'Test Result Report'
+        CONFLUENCE_SPACE = "DEMO"
+        CONFLUENCE_TITLE = "Test Result Report"
 
-        // ==================================
-        // JIRA & RTM Login Credentials Setup
-        // ==================================
-        JIRA_URL          = credentials('jira-base-url')
-        JIRA_USER         = credentials('jira-user')
-        RTM_API_TOKEN     = credentials('rtm-api-key')
-        RTM_BASE_URL      = credentials('rtm-base-url')
-        PROJECT_KEY       = 'RT'
-        REPORT_TYPE       = 'JUNIT'
-        CI_JOB_URL        = "${env.BUILD_URL}"
-        TEST_RESULTS_DIR  = 'test-results'
-        TEST_RESULTS_ZIP  = 'test-results.zip'
+        /* ================== Jira + RTM ==================== */
+        JIRA_URL        = credentials('jira-base-url')
+        JIRA_USER       = credentials('jira-user')
+        JIRA_API_TOKEN  = credentials('jira-api-token')
 
-        // ============================
-        // GitHub Login Credential
-        // ============================
+        RTM_API_TOKEN   = credentials('rtm-api-key')
+        RTM_BASE_URL    = credentials('rtm-base-url')
+        PROJECT_KEY     = "RT"
+
+        /* =================== GitHub ======================= */
         GITHUB_CREDENTIALS = credentials('github-credentials')
 
-        // ============================
-        // Reports Path Setup
-        // ============================
-        REPORT_DIR    = 'report'
-        VERSION_FILE  = 'report/version.txt'
-        REPORT_PATH   = 'report/report.html'
+        /* ===================== Paths ====================== */
+        REPORT_DIR        = 'report'
+        TEST_RESULTS_DIR  = 'report'
+        TEST_RESULTS_ZIP  = 'test-results.zip'
 
-        // =================================
-        // Python Virtual & Cache path Setup
-        // =================================
-        VENV_PATH     = "C:\\jenkins_work\\venv"
-        PIP_CACHE_DIR = "C:\\jenkins_home\\pip-cache"
+        VENV_PATH         = "C:\\jenkins_work\\venv"
+        PIP_CACHE_DIR     = "C:\\jenkins_home\\pip-cache"
 
-        PYTHONUTF8                  = '1'
-        PYTHONIOENCODING            = 'utf-8'
-        PYTHONLEGACYWINDOWSSTDIO    = '1'
-
-        // =================================
-        // Python Testing Failure Action
-        // =================================
-        FORCE_FAIL = "false"
+        PYTHONUTF8             = '1'
+        PYTHONLEGACYWINDOWSSTDIO = '1'
     }
 
+    /******************************************************
+     📝 USER PARAMETERS
+    ******************************************************/
     parameters {
-        string(name: 'RTM_TEST_EXECUTION_KEY', defaultValue: 'RT-55', description: 'RTM Test Execution key')
-        string(name: 'RTM_TEST_PLAN_KEY', defaultValue: 'RT-54', description: 'RTM Test Plan key (optional)')
-        string(name: 'RTM_TRIGGERED_BY', defaultValue: 'devopsuser8413', description: 'RTM user who triggered the run')
+        string(name: 'RTM_TRIGGERED_BY', defaultValue: 'devopsuser8413', description: 'RTM user who requested this execution')
     }
 
+    /******************************************************
+     🚀 PIPELINE STAGES
+    ******************************************************/
     stages {
 
-        // ============================
-        // Checkout Source Code
-        // ============================
+        /**********************************************
+         1️⃣ CHECKOUT SOURCE CODE
+        **********************************************/
         stage('Checkout GitHub') {
             steps {
-                echo '📦 Checking out source code...'
+                echo "📦 Checking out source code..."
                 checkout([
                     $class: 'GitSCM',
                     branches: [[name: '*/main']],
@@ -96,62 +96,44 @@ pipeline {
             }
         }
 
-        // ============================
-        // Setup Python (Persistent venv)
-        // ============================
+        /**********************************************
+         2️⃣ PYTHON SETUP (Persistent Virtualenv)
+        **********************************************/
         stage('Setup Python') {
             steps {
-                echo "📌 Preparing Python virtual environment..."
+                echo "🐍 Preparing Python virtual environment..."
                 bat """
                     @echo off
                     if not exist "%VENV_PATH%" (
-                        echo Creating new venv...
+                        echo Creating virtual environment...
                         python -m venv "%VENV_PATH%"
                     )
-
-                    "%VENV_PATH%\\Scripts\\python.exe" -m pip install --upgrade pip setuptools wheel ^
+                    "%VENV_PATH%\\Scripts\\pip.exe" install --upgrade pip setuptools wheel ^
                         --cache-dir "%PIP_CACHE_DIR%"
                 """
             }
         }
 
-        // ============================
-        // Install Dependencies
-        // ============================
+        /**********************************************
+         3️⃣ INSTALL PYTHON DEPENDENCIES
+        **********************************************/
         stage('Install Dependencies') {
             steps {
                 echo "📥 Installing Python dependencies..."
                 bat """
-                    @echo off
-                    if not exist "%PIP_CACHE_DIR%" mkdir "%PIP_CACHE_DIR%"
-
-                    if exist requirements.lock (
-                        fc requirements.txt requirements.lock >nul
-                        if %errorlevel%==0 (
-                            echo 🔄 Requirements unchanged. Skipping installation.
-                            exit /b 0
-                        )
-                    )
-
-                    echo 📦 Installing Python packages...
-                    "%VENV_PATH%\\Scripts\\pip.exe" install ^
-                        --prefer-binary ^
-                        --cache-dir "%PIP_CACHE_DIR%" ^
-                        -r requirements.txt || exit /b 1
-
-                    copy /Y requirements.txt requirements.lock >nul
+                    "%VENV_PATH%\\Scripts\\pip.exe" install -r requirements.txt ^
+                        --cache-dir "%PIP_CACHE_DIR%"
                 """
             }
         }
 
-        // ============================
-        // Run Tests + JUnit XML
-        // ============================
+        /**********************************************
+         4️⃣ RUN TESTS & GENERATE JUNIT XML
+        **********************************************/
         stage('Run Tests & Generate JUnit') {
             steps {
-                echo "🧪 Running tests + generating JUnit XML..."
+                echo "🧪 Running tests + generating JUnit report..."
                 bat """
-                    pip install pytest-html
                     if not exist report mkdir report
 
                     "%VENV_PATH%\\Scripts\\pytest.exe" ^
@@ -164,41 +146,40 @@ pipeline {
             }
         }
 
-        // ============================
-        // Generate HTML/PDF Report
-        // ============================
+        /**********************************************
+         5️⃣ GENERATE CUSTOM HTML+PDF REPORT
+        **********************************************/
         stage('Generate Report') {
             steps {
-                echo "📝 Generating enhanced HTML/PDF report..."
+                echo "📝 Building enhanced HTML/PDF report..."
                 bat """
                     "%VENV_PATH%\\Scripts\\python.exe" scripts/generate_report.py
                 """
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'report/test_result_report_v*.html', fingerprint: true
-                    archiveArtifacts artifacts: 'report/test_result_report_v*.pdf', fingerprint: true
-                    archiveArtifacts artifacts: 'report/version.txt', fingerprint: true
+                    archiveArtifacts artifacts: 'report/test_result_report_v*.html'
+                    archiveArtifacts artifacts: 'report/test_result_report_v*.pdf'
+                    archiveArtifacts artifacts: 'report/version.txt'
                 }
             }
         }
 
-        // ============================
-        // Publish to Confluence
-        // ============================
+        /**********************************************
+         6️⃣ PUBLISH REPORT TO CONFLUENCE
+        **********************************************/
         stage('Publish Report to Confluence') {
             steps {
                 echo "🌐 Publishing report to Confluence..."
                 bat """
-                    timeout /t 2 >nul
                     "%VENV_PATH%\\Scripts\\python.exe" scripts/publish_report_confluence.py
                 """
             }
         }
 
-        // ============================
-        // Email Report
-        // ============================
+        /**********************************************
+         7️⃣ EMAIL REPORT TO STAKEHOLDERS
+        **********************************************/
         stage('Email Report') {
             steps {
                 echo "📧 Sending email report..."
@@ -208,12 +189,12 @@ pipeline {
             }
         }
 
-        // ============================
-        // Archive Test Results ZIP
-        // ============================
+        /**********************************************
+         8️⃣ ARCHIVE TEST RESULTS
+        **********************************************/
         stage('Archive Test Results') {
             steps {
-                echo "📦 Packaging test results..."
+                echo "📦 Packaging test results ZIP..."
                 powershell """
                     if (Test-Path ${env.TEST_RESULTS_ZIP}) { Remove-Item ${env.TEST_RESULTS_ZIP} }
                     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -222,59 +203,58 @@ pipeline {
             }
             post {
                 success {
-                    archiveArtifacts artifacts: "${TEST_RESULTS_ZIP}", fingerprint: true
+                    archiveArtifacts artifacts: "${TEST_RESULTS_ZIP}"
                 }
             }
         }
 
-        // ============================
-        // Upload to RTM
-        // ============================
+        /**********************************************
+         9️⃣ UPLOAD RESULTS TO RTM (JUnit ZIP)
+        **********************************************/
         stage('Upload Results to RTM') {
-            when {
-                expression { params.RTM_TEST_EXECUTION_KEY?.trim() }
-            }
             steps {
                 echo "📤 Uploading results to RTM..."
                 bat """
-                    "%VENV_PATH%\\Scripts\\python.exe" scripts/rtm_upload_results.py ^
+                    "%VENV_PATH%\\Scripts\\python.exe" scripts\\rtm_upload_results.py ^
                         --archive "${TEST_RESULTS_ZIP}" ^
-                        --test-exec "${params.RTM_TEST_EXECUTION_KEY}" ^
                         --rtm-base "${RTM_BASE_URL}" ^
                         --project "${PROJECT_KEY}"
                 """
             }
         }
 
-        // ============================
-        // Attach Reports to RTM
-        // ============================
+        /**********************************************
+         🔟 ATTACH PDF/HTML REPORTS TO RTM (via Jira)
+        **********************************************/
         stage('Attach Reports to RTM') {
-            when {
-                expression { params.RTM_TEST_EXECUTION_KEY?.trim() }
-            }
             steps {
                 echo "📎 Attaching HTML/PDF reports to RTM..."
+                
+                script {
+                    version = readFile('report/version.txt').trim()
+                }
 
                 bat """
                     "%VENV_PATH%\\Scripts\\python.exe" scripts\\rtm_attach_reports.py ^
-                        --exec "${params.RTM_TEST_EXECUTION_KEY}" ^
-                        --pdf "report\\test_result_report_v2.pdf" ^
-                        --html "report\\test_result_report_v2.html"
+                        --pdf "report\\test_result_report_${version}.pdf" ^
+                        --html "report\\test_result_report_${version}.html"
                 """
             }
         }
     }
 
+    /******************************************************
+     🧹 POST-PIPELINE ACTIONS
+    ******************************************************/
     post {
         success {
-            echo '🎉 PIPELINE COMPLETED SUCCESSFULLY'
+            echo "🎉 PIPELINE COMPLETED SUCCESSFULLY"
         }
         failure {
-            echo '❌ PIPELINE FAILED — Check logs!'
+            echo "❌ PIPELINE FAILED — Check logs!"
         }
         always {
-            echo '🧹 Cleaning workspace complete.'
+            echo "🧹 Cleaning workspace complete."
         }
     }
 }

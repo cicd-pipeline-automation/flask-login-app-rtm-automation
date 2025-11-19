@@ -4,60 +4,52 @@ import argparse
 import requests
 
 
-def parse_args():
-    p = argparse.ArgumentParser(description="Attach report files to RTM Test Execution")
-    p.add_argument("--exec", required=True, help="RTM Test Execution key (e.g., RT-58)")
-    p.add_argument("--pdf", required=True, help="Path to PDF report")
-    p.add_argument("--html", required=True, help="Path to HTML report")
-    return p.parse_args()
-
-
-def upload_attachment(rtm_base, token, execution_key, file_path):
+def attach_file(jira_base, jira_user, jira_token, issue_key, file_path):
     if not os.path.exists(file_path):
         print(f"❌ File not found: {file_path}")
         return False
 
-    url = f"{rtm_base}/api/v2/automation/add-attachment/{execution_key}"
-    headers = {"Authorization": f"Bearer {token}"}
+    print(f"📎 Uploading attachment → {os.path.basename(file_path)}")
 
-    file_name = os.path.basename(file_path)
-    print(f"📎 Uploading attachment → {file_name}")
+    url = f"{jira_base}/rest/api/3/issue/{issue_key}/attachments"
+    headers = {"X-Atlassian-Token": "no-check"}
 
     with open(file_path, "rb") as f:
-        files = {"file": (file_name, f)}
-        response = requests.post(url, headers=headers, files=files)
+        files = {"file": (os.path.basename(file_path), f)}
+        r = requests.post(url, headers=headers, auth=(jira_user, jira_token), files=files)
 
-    if response.status_code in (200, 201, 204):
-        print(f"✅ Uploaded: {file_name}")
+    if r.status_code in (200, 201):
+        print(f"✅ Uploaded: {os.path.basename(file_path)}")
         return True
-    else:
-        print(f"❌ Failed to upload {file_name}")
-        print(f"Status: {response.status_code}")
-        print(f"Response: {response.text}")
-        return False
+
+    print(f"❌ Upload failed ({r.status_code}) → {r.text}")
+    return False
 
 
 def main():
-    args = parse_args()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--pdf", required=True)
+    parser.add_argument("--html", required=True)
+    args = parser.parse_args()
 
-    token = os.getenv("RTM_API_TOKEN")
-    rtm_base = os.getenv("RTM_BASE_URL")
+    jira_base = os.getenv("JIRA_URL")
+    jira_user = os.getenv("JIRA_USER")
+    jira_token = os.getenv("JIRA_API_TOKEN")
 
-    if not token or not rtm_base:
-        raise SystemExit("❌ RTM_API_TOKEN or RTM_BASE_URL environment variables missing.")
+    if not (jira_base and jira_user and jira_token):
+        raise SystemExit("❌ Missing Jira environment variables")
 
-    execution_key = args.exec
+    # Load RTM Execution Key from file
+    if not os.path.exists("rtm_execution_key.txt"):
+        raise SystemExit("❌ Missing rtm_execution_key.txt — RTM upload step failed")
 
-    print(f"🚀 Attaching reports to RTM Test Execution: {execution_key}")
-    print(f"🌐 RTM Base: {rtm_base}")
+    with open("rtm_execution_key.txt", "r") as f:
+        issue_key = f.read().strip()
 
-    pdf_ok = upload_attachment(rtm_base, token, execution_key, args.pdf)
-    html_ok = upload_attachment(rtm_base, token, execution_key, args.html)
+    print(f"🚀 Attaching reports to: {issue_key}")
 
-    if pdf_ok and html_ok:
-        print("🎉 All attachments uploaded successfully.")
-    else:
-        print("⚠ Some attachments failed.")
+    attach_file(jira_base, jira_user, jira_token, issue_key, args.pdf)
+    attach_file(jira_base, jira_user, jira_token, issue_key, args.html)
 
 
 if __name__ == "__main__":
