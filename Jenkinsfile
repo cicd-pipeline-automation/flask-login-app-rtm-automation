@@ -218,7 +218,7 @@ pipeline {
             steps {
                 echo "📤 Uploading results to RTM..."
                 bat """
-                    "C:\\jenkins_work\\venv\\Scripts\\python.exe" scripts\\rtm_upload_results.py ^
+                    "%VENV_PATH%\\Scripts\\python.exe" scripts\\rtm_upload_results.py ^
                     --archive "test-results.zip" ^
                     --rtm-base "%RTM_BASE_URL%" ^
                     --project "%PROJECT_KEY%" ^
@@ -237,19 +237,20 @@ pipeline {
                 echo "📚 Attaching HTML/PDF reports to RTM..."
 
                 script {
-                    // Read version generated earlier
-                    def version = readFile("report/version.txt").trim()
+                    // Read version OUTSIDE of bat step, stored in Jenkins binding
+                    version = readFile("report/version.txt").trim()
                     echo "ℹ Using report version: v${version}"
 
-                    def pdfFile = "report/test_result_report_v${version}.pdf"
-                    def htmlFile = "report/test_result_report_v${version}.html"
+                    pdfFile = "report/test_result_report_v${version}.pdf"
+                    htmlFile = "report/test_result_report_v${version}.html"
 
                     echo "📄 PDF: ${pdfFile}"
                     echo "🌐 HTML: ${htmlFile}"
                 }
 
+                // Use version (from outer scope) inside bat
                 bat """
-                "%VENV_PATH%\\Scripts\\python.exe" scripts\\rtm_attach_reports.py ^
+                    "%VENV_PATH%\\Scripts\\python.exe" scripts\\rtm_attach_reports.py ^
                     --pdf "report/test_result_report_v${version}.pdf" ^
                     --html "report/test_result_report_v${version}.html"
                 """
