@@ -218,13 +218,16 @@ pipeline {
             steps {
                 echo "📤 Uploading results to RTM..."
                 bat """
-                    "%VENV_PATH%\\Scripts\\python.exe" scripts\\rtm_upload_results.py ^
-                        --archive "${TEST_RESULTS_ZIP}" ^
-                        --rtm-base "${RTM_BASE_URL}" ^
-                        --project "${PROJECT_KEY}"
+                    "C:\\jenkins_work\\venv\\Scripts\\python.exe" scripts\\rtm_upload_results.py ^
+                    --archive "test-results.zip" ^
+                    --rtm-base "%RTM_BASE_URL%" ^
+                    --project "%PROJECT_KEY%" ^
+                    --job-url "%BUILD_URL%"
                 """
             }
         }
+
+        
 
         /**********************************************
          🔟 ATTACH PDF/HTML REPORTS TO RTM (via Jira)
