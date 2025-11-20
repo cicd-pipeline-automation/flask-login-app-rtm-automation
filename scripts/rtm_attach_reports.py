@@ -3,6 +3,7 @@ import os
 import argparse
 import requests
 
+
 def attach_file(jira_base, jira_user, jira_token, issue_key, file_path):
     if not os.path.exists(file_path):
         print(f"❌ File not found: {file_path}")
@@ -27,7 +28,7 @@ def attach_file(jira_base, jira_user, jira_token, issue_key, file_path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--issueKey", required=True, help="Jira issue key like RT-89")
+    parser.add_argument("--issueKey", required=True)
     parser.add_argument("--pdf", required=True)
     parser.add_argument("--html", required=True)
     args = parser.parse_args()
@@ -39,7 +40,7 @@ def main():
     if not (jira_base and jira_user and jira_token):
         raise SystemExit("❌ Missing Jira environment variables")
 
-    issue_key = args.issueKey
+    issue_key = args.issueKey.strip()
     print(f"🚀 Attaching reports to Jira Issue: {issue_key}")
 
     attach_file(jira_base, jira_user, jira_token, issue_key, args.pdf)
