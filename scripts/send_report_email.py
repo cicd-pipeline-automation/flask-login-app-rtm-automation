@@ -1,11 +1,12 @@
+#!/usr/bin/env python3
 import os
 import smtplib
 from email.message import EmailMessage
 import re
 
-# ================================
+# ==============================================================
 # Environment Variables
-# ================================
+# ==============================================================
 SMTP_HOST = os.getenv('SMTP_HOST')
 SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
 SMTP_USER = os.getenv('SMTP_USER')
@@ -17,30 +18,31 @@ BCC_RAW = os.getenv('REPORT_BCC', '')
 FROM_EMAIL = os.getenv('REPORT_FROM')
 
 CONFLUENCE_PAGE_URL_ENV = os.getenv("CONFLUENCE_PAGE_URL", "")
-JIRA_EXECUTION_URL_ENV  = os.getenv("JIRA_EXECUTION_URL", "")  # NEW
+JIRA_EXECUTION_URL_ENV  = os.getenv("JIRA_EXECUTION_URL", "")
 
 CONF_LINK_FILE = "report/confluence_url.txt"
-JIRA_LINK_FILE = "report/jira_url.txt"  # NEW
+JIRA_LINK_FILE = "report/jira_url.txt"
+RTM_KEY_FILE   = "rtm_execution_key.txt"           # <–– NEW (CURRENT BUILD ID)
 
-REPORT_DIR   = 'report'
-VERSION_FILE = os.path.join(REPORT_DIR, 'version.txt')
-BASE_NAME    = 'test_result_report'
-PYTEST_LOG   = os.path.join(REPORT_DIR, 'pytest_output.txt')
+REPORT_DIR   = "report"
+VERSION_FILE = os.path.join(REPORT_DIR, "version.txt")
+BASE_NAME    = "test_result_report"
+PYTEST_LOG   = os.path.join(REPORT_DIR, "pytest_output.txt")
 
 
-# ==========================================================
-# Parse comma/semicolon separated lists
-# ==========================================================
+# ==============================================================
+# Parse recipient lists
+# ==============================================================
 def parse_recipients(raw):
     if not raw:
         return []
-    parts = re.split(r'[;,]', raw)
+    parts = re.split(r"[;,]", raw)
     return [p.strip() for p in parts if p.strip()]
 
 
-# ==========================================================
+# ==============================================================
 # Read Confluence URL
-# ==========================================================
+# ==============================================================
 def read_confluence_url():
     if CONFLUENCE_PAGE_URL_ENV:
         return CONFLUENCE_PAGE_URL_ENV
@@ -52,10 +54,27 @@ def read_confluence_url():
     return ""
 
 
-# ==========================================================
-# Read Jira Execution URL (NEW)
-# ==========================================================
-def read_jira_url():
+# ==============================================================
+# NEW – Read Jira Execution Key (RT-XX) directly from RTM file
+# ==============================================================
+def read_jira_execution_from_rtm():
+    jira_base = os.getenv("JIRA_URL", "").rstrip("/")
+    if not jira_base:
+        return ""
+
+    if os.path.exists(RTM_KEY_FILE):
+        with open(RTM_KEY_FILE, "r") as f:
+            key = f.read().strip()
+            if key:
+                return f"{jira_base}/browse/{key}"
+
+    return ""
+
+
+# ==============================================================
+# Read Jira URL fallback
+# ==============================================================
+def read_jira_url_fallback():
     if JIRA_EXECUTION_URL_ENV:
         return JIRA_EXECUTION_URL_ENV
 
@@ -63,13 +82,13 @@ def read_jira_url():
         with open(JIRA_LINK_FILE, "r") as f:
             return f.read().strip()
 
-    # DEFAULT FALLBACK (REQUIRED BY YOU)
+    # Hardcoded fallback you originally had
     return "https://devopsuser8413-1761792468908.atlassian.net/browse/RT-64"
 
 
-# ==========================================================
+# ==============================================================
 # Read version
-# ==========================================================
+# ==============================================================
 def read_version():
     if os.path.exists(VERSION_FILE):
         with open(VERSION_FILE) as f:
@@ -80,9 +99,9 @@ def read_version():
     return 1
 
 
-# ==========================================================
-# Extract test results summary
-# ==========================================================
+# ==============================================================
+# Extract pytest summary
+# ==============================================================
 def extract_test_status():
     if not os.path.exists(PYTEST_LOG):
         return "UNKNOWN", "⚪ No pytest_output.txt found."
@@ -91,7 +110,6 @@ def extract_test_status():
         text = f.read()
 
     passed = failed = errors = skipped = 0
-
     if m := re.search(r"(\d+)\s+passed", text, re.I): passed = int(m.group(1))
     if m := re.search(r"(\d+)\s+failed", text, re.I): failed = int(m.group(1))
     if m := re.search(r"(\d+)\s+errors?", text, re.I): errors = int(m.group(1))
@@ -101,10 +119,10 @@ def extract_test_status():
     rate = (passed / total * 100) if total else 0.0
 
     status = "PASS" if failed == 0 and errors == 0 else "FAIL"
-    overall_emoji = "✅" if status == "PASS" else "❌"
+    emoji  = "✅" if status == "PASS" else "❌"
 
     summary = (
-        f"SUMMARY: {overall_emoji}<br>"
+        f"SUMMARY: {emoji}<br>"
         f"✅ {passed} passed, "
         f"❌ {failed} failed, "
         f"⚠️ {errors} errors, "
@@ -115,9 +133,9 @@ def extract_test_status():
     return status, summary
 
 
-# ==========================================================
-# SEND ONE EMAIL TO ALL RECIPIENTS
-# ==========================================================
+# ==============================================================
+# Send email
+# ==============================================================
 def send_single_email_all(to_list, cc_list, bcc_list,
                           pdf_report_path, version, status, summary,
                           confluence_url, jira_url):
@@ -135,7 +153,7 @@ def send_single_email_all(to_list, cc_list, bcc_list,
 
     all_recipients = to_list + cc_list + bcc_list
 
-    # TEXT BODY
+    # Text body
     msg.set_content(f"""
 Test Status: {status}
 Summary: {summary}
@@ -144,7 +162,7 @@ Confluence Report:
 {confluence_url or 'N/A'}
 
 Jira Test Execution:
-{jira_url}
+{jira_url or 'N/A'}
 
 PDF test report (v{version}) is attached.
 
@@ -152,43 +170,43 @@ Regards,
 QA Automation System
 """)
 
-    # HTML BODY (with Jira Link)
+    # HTML body – updated to use dynamic Jira key
     msg.add_alternative(f"""
-    <html>
-        <body style="font-family:Arial,sans-serif;">
-            <h2>{emoji} Test Result:
-                <span style="color:{color}">{status}</span> (v{version})
-            </h2>
+<html>
+<body style="font-family:Arial,sans-serif;">
+    <h2>{emoji} Test Result:
+        <span style="color:{color}">{status}</span> (v{version})
+    </h2>
 
-            <p><b>Summary:</b> {summary}</p>
+    <p><b>Summary:</b> {summary}</p>
 
-            <h3>📄 Confluence Report</h3>
-            <p>
-                {'<a href="' + confluence_url + '" target="_blank">View in Confluence</a>' 
-                if confluence_url else 'No Confluence URL available.'}
-            </p>
+    <h3>📄 Confluence Report</h3>
+    <p>
+        {'<a href="' + confluence_url + '" target="_blank">Open in Confluence</a>' 
+        if confluence_url else 'No Confluence URL available.'}
+    </p>
 
-            <h3>📌 Jira Test Execution</h3>
-            <p>
-                <a href="{jira_url}" target="_blank">
-                    Open Jira Test Execution (RT-64)
-                </a>
-            </p>
+    <h3>📌 Jira Test Execution</h3>
+    <p>
+        <a href="{jira_url}" target="_blank">
+            Open Jira Test Execution
+        </a>
+    </p>
 
-            <p>The PDF report is attached.</p>
+    <p>The PDF report is attached.</p>
 
-            <p>Regards,<br><b>QA Automation System</b></p>
-        </body>
-    </html>
-    """, subtype="html")
+    <p>Regards,<br><b>QA Automation System</b></p>
+</body>
+</html>
+""", subtype="html")
 
-    # ATTACH PDF
+    # Attachment
     with open(pdf_report_path, "rb") as f:
         msg.add_attachment(
             f.read(),
             maintype="application",
             subtype="pdf",
-            filename=os.path.basename(pdf_report_path),
+            filename=os.path.basename(pdf_report_path)
         )
 
     print("📤 Sending ONE EMAIL to all recipients...")
@@ -207,9 +225,9 @@ QA Automation System
     print("✅ Successfully sent email.\n")
 
 
-# ==========================================================
-# MAIN
-# ==========================================================
+# ==============================================================
+# Main
+# ==============================================================
 def main():
     version = read_version()
     pdf_report_path = os.path.join(REPORT_DIR, f"{BASE_NAME}_v{version}.pdf")
@@ -219,7 +237,16 @@ def main():
 
     status, summary = extract_test_status()
     confluence_url = read_confluence_url()
-    jira_url = read_jira_url()
+
+    # Priority (NEW)
+    # 1. RTM current build execution key
+    # 2. Environment variable override
+    # 3. File fallback
+    jira_url = (
+        read_jira_execution_from_rtm()
+        or JIRA_EXECUTION_URL_ENV
+        or read_jira_url_fallback()
+    )
 
     to_list  = parse_recipients(TO_RAW)
     cc_list  = parse_recipients(CC_RAW)
@@ -235,9 +262,9 @@ def main():
     )
 
 
-# ==========================================================
-# ENTRY
-# ==========================================================
+# ==============================================================
+# Entry
+# ==============================================================
 if __name__ == "__main__":
     try:
         main()
