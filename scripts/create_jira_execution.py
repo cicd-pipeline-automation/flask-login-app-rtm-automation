@@ -9,11 +9,14 @@ def create_issue(jira_base, user, token, project, summary, output_file):
     url = f"{jira_base}/rest/api/3/issue"
     headers = {"Content-Type": "application/json"}
 
+    # Team-managed project requires issueType ID (NOT name)
+    TASK_ISSUE_TYPE_ID = "10091"
+
     payload = {
         "fields": {
             "project": {"key": project},
             "summary": summary,
-            "issuetype": {"name": "Task"}  # Team-managed default issue type
+            "issuetype": {"id": TASK_ISSUE_TYPE_ID}
         }
     }
 
@@ -32,7 +35,6 @@ def create_issue(jira_base, user, token, project, summary, output_file):
 
     print(f"✅ Created Jira Issue: {issue_key}")
 
-    # Save output
     with open(output_file, "w") as f:
         f.write(issue_key)
 
