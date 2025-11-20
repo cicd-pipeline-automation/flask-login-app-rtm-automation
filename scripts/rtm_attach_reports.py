@@ -1,138 +1,111 @@
-#!/usr/bin/env python3
 import os
 import argparse
 import requests
 import sys
+import json
 import time
-import re
 
-# ================================================================
-# Upload attachment to Jira with retries + better error handling
-# ================================================================
-def attach_file(jira_base, jira_user, jira_token, issue_key, file_path, retries=3):
 
-    if not os.path.exists(file_path):
-        print(f"❌ File not found → {file_path}")
-        return False
+def info(msg): print(f"ℹ {msg}")
+def success(msg): print(f"✅ {msg}")
+def error(msg): print(f"❌ {msg}")
+def warn(msg): print(f"⚠ {msg}")
 
-    jira_base = jira_base.rstrip("/")
-    url = f"{jira_base}/rest/api/3/issue/{issue_key}/attachments"
 
-    print(f"\n📎 Uploading attachment → {os.path.basename(file_path)}")
-    print(f"🔗 Jira API URL → {url}")
+# -------------------------
+# Parse CLI args
+# -------------------------
+parser = argparse.ArgumentParser(description="Attach HTML/PDF reports to Jira")
+parser.add_argument("--issueKey", required=True, help="Jira issue key (e.g., RT-72)")
+parser.add_argument("--pdf", required=True, help="PDF file path")
+parser.add_argument("--html", required=True, help="HTML file path")
+args = parser.parse_args()
 
-    headers = {
-        "X-Atlassian-Token": "no-check",
-        "Accept": "application/json"
-    }
+issue_key = args.issueKey.strip()
+pdf_file = args.pdf
+html_file = args.html
+
+# -------------------------
+# Validate report files
+# -------------------------
+if not os.path.isfile(pdf_file):
+    error(f"PDF file not found: {pdf_file}")
+    sys.exit(1)
+
+if not os.path.isfile(html_file):
+    error(f"HTML file not found: {html_file}")
+    sys.exit(1)
+
+# -------------------------
+# Jira credentials
+# -------------------------
+JIRA_BASE = os.getenv("JIRA_URL")
+JIRA_USER = os.getenv("JIRA_USER")
+JIRA_TOKEN = os.getenv("JIRA_API_TOKEN")
+
+missing = []
+if not JIRA_BASE: missing.append("JIRA_URL")
+if not JIRA_USER: missing.append("JIRA_USER")
+if not JIRA_TOKEN: missing.append("JIRA_API_TOKEN")
+
+if missing:
+    error(f"Missing Jira env vars: {', '.join(missing)}")
+    sys.exit(1)
+
+upload_url = f"{JIRA_BASE}/rest/api/3/issue/{issue_key}/attachments"
+auth = (JIRA_USER, JIRA_TOKEN)
+headers = {"X-Atlassian-Token": "no-check"}
+
+info(f"Jira Issue: {issue_key}")
+info(f"Upload URL: {upload_url}\n")
+
+
+# -------------------------
+# Upload helper with retry
+# -------------------------
+def upload_with_retry(filepath, retries=3, delay=2):
+    filename = os.path.basename(filepath)
+    info(f"📤 Uploading → {filename}")
 
     for attempt in range(1, retries + 1):
         try:
-            with open(file_path, "rb") as f:
-                files = {"file": (os.path.basename(file_path), f)}
+            with open(filepath, "rb") as f:
+                files = {"file": (filename, f, "application/octet-stream")}
+                resp = requests.post(upload_url, auth=auth, headers=headers, files=files)
 
-                response = requests.post(
-                    url,
-                    headers=headers,
-                    auth=(jira_user, jira_token),
-                    files=files,
-                    timeout=30
-                )
+            if resp.status_code in (200, 201):
+                success(f"Uploaded: {filename}")
+                return True
+
+            try:
+                msg = json.dumps(resp.json(), indent=2)
+            except:
+                msg = resp.text
+
+            warn(f"Attempt {attempt}/{retries} failed → {resp.status_code}\n{msg}")
+
+            if attempt < retries:
+                time.sleep(delay)
+                info("Retrying...")
 
         except Exception as e:
-            print(f"❌ Exception during upload → {e}")
-            time.sleep(2)
-            continue
+            warn(f"Exception: {e}")
+            if attempt < retries:
+                time.sleep(delay)
 
-        # -----------------------------
-        # SUCCESS
-        # -----------------------------
-        if response.status_code in (200, 201):
-            print(f"✅ SUCCESS: Uploaded {os.path.basename(file_path)}")
-            return True
-
-        # -----------------------------
-        # COMMON ERROR CASES
-        # -----------------------------
-        if response.status_code == 401:
-            print("❌ ERROR 401 → Invalid Jira username or API token")
-            return False
-
-        if response.status_code == 403:
-            print("❌ ERROR 403 → Jira user does NOT have permission to upload attachments")
-            return False
-
-        if response.status_code == 404:
-            print(f"❌ ERROR 404 → Issue NOT found or no access: {response.text}")
-            return False
-
-        if response.status_code == 413:
-            print("❌ ERROR 413 → File too large for Jira attachment limits")
-            return False
-
-        if response.status_code == 429:
-            print(f"⚠️ WARNING 429 (Rate Limit) → Retry {attempt}/{retries}")
-            time.sleep(3)
-            continue
-
-        print(f"❌ Upload failed ({response.status_code}) → {response.text}")
-        return False
-
+    error(f"Failed after {retries} attempts → {filename}")
     return False
 
 
-# ================================================================
-# MAIN
-# ================================================================
-def main():
-    parser = argparse.ArgumentParser(description="Attach PDF/HTML reports to Jira Test Execution")
-    parser.add_argument("--pdf", required=True)
-    parser.add_argument("--html", required=True)
-    args = parser.parse_args()
+# -------------------------
+# Upload both files
+# -------------------------
+pdf_ok = upload_with_retry(pdf_file)
+html_ok = upload_with_retry(html_file)
 
-    jira_base = os.getenv("JIRA_URL")
-    jira_user = os.getenv("JIRA_USER")
-    jira_token = os.getenv("JIRA_API_TOKEN")
+if not (pdf_ok and html_ok):
+    error("Attachment process failed.")
+    sys.exit(1)
 
-    if not (jira_base and jira_user and jira_token):
-        print("❌ ERROR: Missing Jira environment variables (JIRA_URL, JIRA_USER, JIRA_API_TOKEN)")
-        sys.exit(1)
-
-    # ------------------------------------------------------------
-    # LOAD RTM EXECUTION KEY
-    # ------------------------------------------------------------
-    issue_key = os.getenv("RTM_EXECUTION_KEY")
-
-    if not issue_key:
-        if not os.path.exists("rtm_execution_key.txt"):
-            print("❌ ERROR: No RTM_EXECUTION_KEY and missing rtm_execution_key.txt")
-            sys.exit(1)
-
-        with open("rtm_execution_key.txt", "r") as f:
-            issue_key = f.read().strip()
-
-    # Validate format e.g. RT-70
-    if not re.match(r"^[A-Z]{1,10}-\d+$", issue_key):
-        print(f"❌ ERROR: Invalid Jira Issue Key format → {issue_key}")
-        sys.exit(1)
-
-    print(f"🚀 Jira Test Execution Issue: {issue_key}")
-
-    # ------------------------------------------------------------
-    # ATTACH FILES
-    # ------------------------------------------------------------
-    print("\n📤 Attaching files to Jira...\n")
-
-    pdf_ok = attach_file(jira_base, jira_user, jira_token, issue_key, args.pdf)
-    html_ok = attach_file(jira_base, jira_user, jira_token, issue_key, args.html)
-
-    if not (pdf_ok and html_ok):
-        print("\n❌ ERROR: One or more attachments failed.")
-        sys.exit(1)
-
-    print("\n🎉 SUCCESS: All files uploaded to Jira!")
-    sys.exit(0)
-
-
-if __name__ == "__main__":
-    main()
+success("All attachments uploaded successfully!")
+sys.exit(0)

@@ -44,13 +44,14 @@ pipeline {
         CONFLUENCE_TITLE = "Test Result Report"
 
         /* ================== Jira + RTM ==================== */
-        JIRA_URL        = credentials('jira-base-url')
-        JIRA_USER       = credentials('jira-user')
-        JIRA_API_TOKEN  = credentials('jira-api-token')
+        JIRA_URL            = credentials('jira-base-url')
+        JIRA_USER           = credentials('jira-user')
+        JIRA_API_TOKEN      = credentials('jira-api-token')
 
-        RTM_API_TOKEN   = credentials('rtm-api-key')
-        RTM_BASE_URL    = credentials('rtm-base-url')
-        PROJECT_KEY     = "RT"
+        RTM_API_TOKEN       = credentials('rtm-api-key')
+        RTM_BASE_URL        = credentials('rtm-base-url')
+        PROJECT_KEY         = "RT"
+        RTM_TEST_EXEC_KEY   = "RT-55"
 
         /* =================== GitHub ======================= */
         GITHUB_CREDENTIALS = credentials('github-credentials')
@@ -236,7 +237,7 @@ pipeline {
                     // --- Execute Python script for attachment upload ---
                     def status = bat returnStatus: true, script: """
                         "%VENV_PATH%\\Scripts\\python.exe" scripts\\rtm_attach_reports.py ^
-                            --issueKey "RT-72" ^
+                            --issueKey "${RTM_TEST_EXEC_KEY}" ^
                             --pdf "${pdfFile}" ^
                             --html "${htmlFile}"
                     """
