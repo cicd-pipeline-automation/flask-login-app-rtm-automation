@@ -19,7 +19,7 @@ pipeline {
      🔐 ENVIRONMENT VARIABLES
     ******************************************************/
     environment {
-        /* SMTP */
+        /* ===================== SMTP ====================== */
         SMTP_HOST       = credentials('smtp-host')
         SMTP_PORT       = '587'
         SMTP_USER       = credentials('smtp-user')
@@ -29,14 +29,14 @@ pipeline {
         REPORT_CC       = credentials('cc-email')
         REPORT_BCC      = credentials('bcc-email')
 
-        /* Confluence */
+        /* ================ Confluence Access =============== */
         CONFLUENCE_BASE  = credentials('confluence-base')
         CONFLUENCE_USER  = credentials('confluence-user')
         CONFLUENCE_TOKEN = credentials('confluence-token')
         CONFLUENCE_SPACE = "RTMTESTAUT"
         CONFLUENCE_TITLE = "Test Result Report"
 
-        /* Jira + RTM */
+        /* ================== Jira + RTM ==================== */
         JIRA_URL        = credentials('jira-base-url')
         JIRA_USER       = credentials('jira-user')
         JIRA_API_TOKEN  = credentials('jira-api-token')
@@ -45,10 +45,10 @@ pipeline {
         RTM_BASE_URL    = credentials('rtm-base-url')
         PROJECT_KEY     = "RT"
 
-        /* GitHub */
+        /* =================== GitHub ======================= */
         GITHUB_CREDENTIALS = credentials('github-credentials')
 
-        /* Paths */
+        /* ===================== Paths ====================== */
         REPORT_DIR        = 'report'
         TEST_RESULTS_DIR  = 'report'
         TEST_RESULTS_ZIP  = 'test-results.zip'
@@ -56,9 +56,12 @@ pipeline {
         VENV_PATH         = "C:\\jenkins_work\\venv"
         PIP_CACHE_DIR     = "C:\\jenkins_home\\pip-cache"
 
-        /* Python */
+        /* ===================== Python UTF8 Setup ====================== */
         PYTHONUTF8 = '1'
         PYTHONLEGACYWINDOWSSTDIO = '1'
+
+        /* ===================== Test Case Action ====================== */
+        FORCE_FAIL = false
     }
 
     /******************************************************
