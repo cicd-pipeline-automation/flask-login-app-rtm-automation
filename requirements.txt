@@ -1,4 +1,8 @@
-# ---- Python Packaging Tools ----
+#############################################
+#   PRODUCTION-READY REQUIREMENTS — RTM CI  #
+#############################################
+
+# ---- Core Packaging Tools ----
 setuptools==75.1.0
 wheel==0.44.0
 
@@ -7,30 +11,35 @@ Flask==3.0.2
 Flask-Login==0.6.3
 Flask-WTF==1.2.1
 WTForms==3.1.2
+itsdangerous==2.2.0
+bcrypt==4.2.0
 
-# ---- Email (SMTP) ----
-Jinja2==3.1.4
+# ---- Utilities ----
 python-dotenv==1.0.1
+colorama==0.4.6
+PyYAML==6.0.2
 
-# ---- Confluence API ----
+# ---- Confluence API / HTTP Client ----
 requests==2.32.3
-atlassian-python-api==3.41.3
+urllib3==2.2.3
+certifi==2024.8.30
+idna==3.7
+charset-normalizer==3.3.2
+
+# ---- HTML Parsing ----
+beautifulsoup4==4.12.3
+bs4==0.0.2
+lxml==5.1.0
 
 # ---- Report Generation ----
-beautifulsoup4==4.12.3
-lxml==5.2.2
-pandas==2.2.3
 matplotlib==3.9.2
+Pillow==10.4.0
 reportlab==4.2.0
 
-# ---- Test Framework ----
+# ---- Testing ----
 pytest==8.3.3
 pytest-html==4.1.1
+markdown==3.7          # Required by pytest-html
 
-# ---- Authentication, Security, Input Validation ----
-bcrypt==4.2.0
-itsdangerous==2.2.0
-
-# ---- Utils ----
-PyYAML==6.0.2
-colorama==0.4.6
+# ---- OPTIONAL: Data Processing (Uncomment if needed) ----
+# pandas==2.2.3

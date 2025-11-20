@@ -17,7 +17,10 @@ BCC_RAW = os.getenv('REPORT_BCC', '')
 FROM_EMAIL = os.getenv('REPORT_FROM')
 
 CONFLUENCE_PAGE_URL_ENV = os.getenv("CONFLUENCE_PAGE_URL", "")
+JIRA_EXECUTION_URL_ENV  = os.getenv("JIRA_EXECUTION_URL", "")  # NEW
+
 CONF_LINK_FILE = "report/confluence_url.txt"
+JIRA_LINK_FILE = "report/jira_url.txt"  # NEW
 
 REPORT_DIR   = 'report'
 VERSION_FILE = os.path.join(REPORT_DIR, 'version.txt')
@@ -47,6 +50,21 @@ def read_confluence_url():
             return f.read().strip()
 
     return ""
+
+
+# ==========================================================
+# Read Jira Execution URL (NEW)
+# ==========================================================
+def read_jira_url():
+    if JIRA_EXECUTION_URL_ENV:
+        return JIRA_EXECUTION_URL_ENV
+
+    if os.path.exists(JIRA_LINK_FILE):
+        with open(JIRA_LINK_FILE, "r") as f:
+            return f.read().strip()
+
+    # DEFAULT FALLBACK (REQUIRED BY YOU)
+    return "https://devopsuser8413-1761792468908.atlassian.net/browse/RT-64"
 
 
 # ==========================================================
@@ -85,7 +103,6 @@ def extract_test_status():
     status = "PASS" if failed == 0 and errors == 0 else "FAIL"
     overall_emoji = "✅" if status == "PASS" else "❌"
 
-    # FIX: Use correct emojis for each metric
     summary = (
         f"SUMMARY: {overall_emoji}<br>"
         f"✅ {passed} passed, "
@@ -97,11 +114,13 @@ def extract_test_status():
 
     return status, summary
 
+
 # ==========================================================
 # SEND ONE EMAIL TO ALL RECIPIENTS
 # ==========================================================
 def send_single_email_all(to_list, cc_list, bcc_list,
-                          pdf_report_path, version, status, summary, confluence_url):
+                          pdf_report_path, version, status, summary,
+                          confluence_url, jira_url):
 
     emoji = "✅" if status == "PASS" else "❌"
     color = "green" if status == "PASS" else "red"
@@ -114,10 +133,9 @@ def send_single_email_all(to_list, cc_list, bcc_list,
     if cc_list:
         msg["Cc"] = ", ".join(cc_list)
 
-    # BCC is excluded from header intentionally
     all_recipients = to_list + cc_list + bcc_list
 
-    # TEXT Body
+    # TEXT BODY
     msg.set_content(f"""
 Test Status: {status}
 Summary: {summary}
@@ -125,13 +143,16 @@ Summary: {summary}
 Confluence Report:
 {confluence_url or 'N/A'}
 
+Jira Test Execution:
+{jira_url}
+
 PDF test report (v{version}) is attached.
 
 Regards,
 QA Automation System
 """)
 
-    # HTML Body
+    # HTML BODY (with Jira Link)
     msg.add_alternative(f"""
     <html>
         <body style="font-family:Arial,sans-serif;">
@@ -143,7 +164,15 @@ QA Automation System
 
             <h3>📄 Confluence Report</h3>
             <p>
-                {'<a href="' + confluence_url + '" target="_blank">View full report in Confluence</a>' if confluence_url else 'No Confluence URL available.'}
+                {'<a href="' + confluence_url + '" target="_blank">View in Confluence</a>' 
+                if confluence_url else 'No Confluence URL available.'}
+            </p>
+
+            <h3>📌 Jira Test Execution</h3>
+            <p>
+                <a href="{jira_url}" target="_blank">
+                    Open Jira Test Execution (RT-64)
+                </a>
             </p>
 
             <p>The PDF report is attached.</p>
@@ -153,7 +182,7 @@ QA Automation System
     </html>
     """, subtype="html")
 
-    # Attach PDF
+    # ATTACH PDF
     with open(pdf_report_path, "rb") as f:
         msg.add_attachment(
             f.read(),
@@ -169,16 +198,13 @@ QA Automation System
 
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
         s.ehlo()
-
         if SMTP_PORT == 587:
             s.starttls()
-
         if SMTP_USER and SMTP_PASS:
             s.login(SMTP_USER, SMTP_PASS)
-
         s.send_message(msg, to_addrs=all_recipients)
 
-    print("✅ Successfully sent **ONE email** to ALL recipients.\n")
+    print("✅ Successfully sent email.\n")
 
 
 # ==========================================================
@@ -193,6 +219,7 @@ def main():
 
     status, summary = extract_test_status()
     confluence_url = read_confluence_url()
+    jira_url = read_jira_url()
 
     to_list  = parse_recipients(TO_RAW)
     cc_list  = parse_recipients(CC_RAW)
@@ -203,12 +230,13 @@ def main():
 
     send_single_email_all(
         to_list, cc_list, bcc_list,
-        pdf_report_path, version, status, summary, confluence_url
+        pdf_report_path, version, status, summary,
+        confluence_url, jira_url
     )
 
 
 # ==========================================================
-# Entry
+# ENTRY
 # ==========================================================
 if __name__ == "__main__":
     try:

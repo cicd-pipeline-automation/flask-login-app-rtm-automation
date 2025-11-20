@@ -1,7 +1,10 @@
+#!/usr/bin/env python3
 import os
 import re
 from io import BytesIO
 from bs4 import BeautifulSoup
+import matplotlib
+matplotlib.use("Agg")  # REQUIRED for Jenkins / CI/CD
 import matplotlib.pyplot as plt
 
 from reportlab.lib.pagesizes import A4
@@ -11,59 +14,59 @@ from reportlab.platypus import (
 )
 from reportlab.lib.styles import getSampleStyleSheet
 
-# =============================
+
+# ============================================================
 # Paths & Config
-# =============================
+# ============================================================
 INPUT_REPORT = 'report/report.html'
 OUTPUT_DIR = 'report'
 BASE_NAME = 'test_result_report'
 VERSION_FILE = os.path.join(OUTPUT_DIR, 'version.txt')
 
 
-# =============================
+# ============================================================
 # Version Helper
-# =============================
+# ============================================================
 def get_next_version():
-    """Reads version.txt → increases version → writes new version."""
+    """Reads version.txt → increments → writes new version."""
     version = 0
     if os.path.exists(VERSION_FILE):
         try:
-            with open(VERSION_FILE) as f:
-                version = int(f.read().strip())
+            version = int(open(VERSION_FILE).read().strip())
         except:
             version = 0
 
-    version += 1
+    version = version + 1 if version >= 0 else 1
     with open(VERSION_FILE, 'w') as vf:
         vf.write(str(version))
 
     return version
 
 
-# =============================
-# Summary Count Extractor
-# =============================
+# ============================================================
+# Extract Summary Numbers
+# ============================================================
 def extract_summary_counts(html_text):
     patterns = {
         'passed': r'(\d+)\s+passed',
         'failed': r'(\d+)\s+failed',
         'skipped': r'(\d+)\s+skipped',
-        'error':   r'(\d+)\s+error[s]?(?=\b)'   # Updated regex
+        'error': r'(\d+)\s+errors?',
     }
 
     counts = {}
     for key, pattern in patterns.items():
-        match = re.search(pattern, html_text, re.IGNORECASE)
-        counts[key] = int(match.group(1)) if match else 0
+        m = re.search(pattern, html_text, re.IGNORECASE)
+        counts[key] = int(m.group(1)) if m else 0
 
     return counts
 
 
-# =============================
-# Graph / Chart Generator
-# =============================
+# ============================================================
+# Chart Generator
+# ============================================================
 def create_summary_chart(counts):
-    labels = ['Passed', 'Failed', 'Skipped', 'Error']
+    labels = ['Passed', 'Failed', 'Skipped', 'Errors']
     values = [
         counts['passed'],
         counts['failed'],
@@ -71,38 +74,41 @@ def create_summary_chart(counts):
         counts['error']
     ]
 
-    # Prevent all-zero crash
     if sum(values) == 0:
-        values = [0.001] * 4
+        values = [0.001] * 4  # Prevent div-zero
 
     colors_ = ['#4CAF50', '#F44336', '#FF9800', '#9E9E9E']
 
-    fig, ax = plt.subplots(figsize=(6, 2))
+    fig, ax = plt.subplots(figsize=(7, 2.5))
     bars = ax.barh(labels, values, color=colors_)
-    ax.set_xlabel('Number of Tests')
-    ax.set_title('Test Summary Overview')
-    ax.bar_label(bars, labels=[str(v) for v in values], label_type='edge')
+    ax.set_xlabel('Number of Tests', fontsize=10)
+    ax.set_title('Test Summary Overview', fontsize=11)
+    ax.bar_label(bars, labels=[str(v) for v in values], label_type='edge', fontsize=9)
     plt.tight_layout()
 
     buf = BytesIO()
-    plt.savefig(buf, format='png', dpi=200)  # Higher DPI
+    plt.savefig(buf, format='png', dpi=180)
     buf.seek(0)
     plt.close(fig)
+
     return buf
 
 
-# =============================
+# ============================================================
 # PDF Generator
-# =============================
+# ============================================================
 def generate_pdf_report(version, counts, pass_rate, chart_buf):
-    pdf_file = os.path.join(OUTPUT_DIR, f"{BASE_NAME}_v{version}.pdf")
+    pdf_path = os.path.join(OUTPUT_DIR, f"{BASE_NAME}_v{version}.pdf")
 
-    doc = SimpleDocTemplate(pdf_file, pagesize=A4)
+    doc = SimpleDocTemplate(pdf_path, pagesize=A4)
     styles = getSampleStyleSheet()
     elements = []
 
     # Title
-    elements.append(Paragraph(f"<b>Test Result Report - v{version}</b>", styles['Title']))
+    elements.append(Paragraph(
+        f"<b>Test Result Report - v{version}</b>",
+        styles['Title']
+    ))
     elements.append(Spacer(1, 12))
 
     summary_html = f"""
@@ -116,11 +122,13 @@ def generate_pdf_report(version, counts, pass_rate, chart_buf):
     elements.append(Paragraph(summary_html, styles['Normal']))
     elements.append(Spacer(1, 20))
 
+    # Chart
     img = Image(chart_buf)
-    img._restrictSize(400, 150)
+    img._restrictSize(450, 200)
     elements.append(img)
     elements.append(Spacer(1, 20))
 
+    # Table
     data = [
         ["Metric", "Count"],
         ["Passed", counts["passed"]],
@@ -132,53 +140,50 @@ def generate_pdf_report(version, counts, pass_rate, chart_buf):
 
     table = Table(data, colWidths=[200, 200])
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
-        ('TEXTCOLOR',   (0, 0), (-1, 0), colors.black),
-        ('ALIGN',       (0, 0), (-1, -1), 'CENTER'),
-        ('GRID',        (0, 0), (-1, -1), 0.5, colors.grey),
-        ('FONTNAME',    (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('BACKGROUND',  (0, 1), (-1, -1), colors.whitesmoke),
+        ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+        ('BACKGROUND', (0,1), (-1,-1), colors.whitesmoke),
     ]))
 
     elements.append(table)
     doc.build(elements)
-    print(f"📄 PDF report generated: {pdf_file}")
-    return pdf_file
+
+    print(f"📄 PDF report generated: {pdf_path}")
+    return pdf_path
 
 
-# =============================
+# ============================================================
 # HTML Enhancer
-# =============================
+# ============================================================
 def enhance_html_report():
     if not os.path.exists(INPUT_REPORT):
-        raise SystemExit(f"❌ Base HTML report not found: {INPUT_REPORT}")
+        raise SystemExit(f"❌ Base HTML report missing: {INPUT_REPORT}")
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    with open(INPUT_REPORT, 'r', encoding='utf-8') as f:
-        soup = BeautifulSoup(f, 'html.parser')
+    html_content = open(INPUT_REPORT, 'r', encoding='utf-8').read()
+    soup = BeautifulSoup(html_content, 'html.parser')
 
-    raw_html = str(soup)
-
-    counts = extract_summary_counts(raw_html)
+    counts = extract_summary_counts(html_content)
     total = sum(counts.values()) or 1
     pass_rate = (counts['passed'] / total) * 100
 
     summary_block = f"""
-        <div style="background-color:#f9f9f9; border:1px solid #ddd; padding:15px; margin-bottom:20px;">
-          <h2>🔍 Test Execution Summary</h2>
-          <p>
-            <span style="color:#4CAF50;">🟢 Passed: {counts['passed']}</span> |
-            <span style="color:#F44336;">🔴 Failed: {counts['failed']}</span> |
-            <span style="color:#FF9800;">🟠 Skipped: {counts['skipped']}</span> |
-            <span style="color:#9E9E9E;">⚫ Errors: {counts['error']}</span>
-          </p>
-          <p><b>✅ Pass Rate:</b> {pass_rate:.1f}%</p>
+        <div style='background:#f9f9f9;border:1px solid #ccc;padding:15px;margin-bottom:15px;'>
+            <h2>🔍 Test Execution Summary</h2>
+            <p>
+              <span style='color:#4CAF50;'>🟢 Passed: {counts['passed']}</span> |
+              <span style='color:#F44336;'>🔴 Failed: {counts['failed']}</span> |
+              <span style='color:#FF9800;'>🟠 Skipped: {counts['skipped']}</span> |
+              <span style='color:#9E9E9E;'>⚫ Errors: {counts['error']}</span>
+            </p>
+            <p><b>Pass Rate:</b> {pass_rate:.1f}%</p>
         </div>
     """
 
-    # Safe insertion
-    body = soup.body or soup.find('body') or soup
+    body = soup.body if soup.body else soup
     body.insert(0, BeautifulSoup(summary_block, 'html.parser'))
 
     version = get_next_version()
@@ -191,11 +196,13 @@ def enhance_html_report():
     print(f"🔢 Version v{version}")
 
     chart_buf = create_summary_chart(counts)
-    generate_pdf_report(version, counts, pass_rate, chart_buf)
+    pdf_path = generate_pdf_report(version, counts, pass_rate, chart_buf)
+
+    return html_out, pdf_path
 
 
-# =============================
+# ============================================================
 # Entry Point
-# =============================
+# ============================================================
 if __name__ == "__main__":
     enhance_html_report()
