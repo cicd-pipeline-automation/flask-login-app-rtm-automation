@@ -40,7 +40,7 @@ pipeline {
         CONFLUENCE_BASE  = credentials('confluence-base')
         CONFLUENCE_USER  = credentials('confluence-user')
         CONFLUENCE_TOKEN = credentials('confluence-token')
-        CONFLUENCE_SPACE = "DEMO"
+        CONFLUENCE_SPACE = "RTM-TEST-AUTOMATION"
         CONFLUENCE_TITLE = "Test Result Report"
 
         /* ================== Jira + RTM ==================== */
