@@ -223,23 +223,29 @@ pipeline {
                 echo "📚 Attaching HTML/PDF reports to RTM..."
 
                 script {
-                    // Read version OUTSIDE of bat step, stored in Jenkins binding
-                    version = readFile("report/version.txt").trim()
+                    // --- Read version & construct file names ---
+                    def version   = readFile('report/version.txt').trim()
                     echo "ℹ Using report version: v${version}"
 
-                    pdfFile = "report/test_result_report_v${version}.pdf"
-                    htmlFile = "report/test_result_report_v${version}.html"
+                    def pdfFile   = "report/test_result_report_v${version}.pdf"
+                    def htmlFile  = "report/test_result_report_v${version}.html"
 
-                    echo "📄 PDF: ${pdfFile}"
+                    echo "📰 PDF: ${pdfFile}"
                     echo "🌐 HTML: ${htmlFile}"
-                }
 
-                // Use version (from outer scope) inside bat
-                bat """
-                    "%VENV_PATH%\\Scripts\\python.exe" scripts\\rtm_attach_reports.py ^
-                    --pdf "report/test_result_report_v${version}.pdf" ^
-                    --html "report/test_result_report_v${version}.html"
-                """
+                    // --- Execute Python script for attachment upload ---
+                    def status = bat returnStatus: true, script: """
+                        "%VENV_PATH%\\Scripts\\python.exe" scripts\\rtm_attach_reports.py ^
+                            --issueKey "RT-72" ^
+                            --pdf "${pdfFile}" ^
+                            --html "${htmlFile}"
+                    """
+                    if (status != 0) {
+                        error("❌ RTM Attachment Failed — stopping pipeline")
+                    } else {
+                        echo "✅ RTM attachments uploaded successfully!"
+                    }
+                }
             }
         }
 
