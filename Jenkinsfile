@@ -70,12 +70,12 @@ pipeline {
         FORCE_FAIL = false
     }
 
-    /******************************************************
-     📝 USER PARAMETERS
-    ******************************************************/
-    parameters {
-        string(name: 'RTM_TRIGGERED_BY', defaultValue: 'devopsuser8413', description: 'RTM user who requested this execution')
-    }
+    // /******************************************************
+    //  📝 USER PARAMETERS
+    // ******************************************************/
+    // parameters {
+    //     string(name: 'RTM_TRIGGERED_BY', defaultValue: 'devopsuser8413', description: 'RTM user who requested this execution')
+    // }
 
     /******************************************************
      🚀 PIPELINE STAGES
