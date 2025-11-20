@@ -73,9 +73,9 @@ pipeline {
     // /******************************************************
     //  📝 USER PARAMETERS
     // ******************************************************/
-    // parameters {
-    //     string(name: 'RTM_TRIGGERED_BY', defaultValue: 'devopsuser8413', description: 'RTM user who requested this execution')
-    // }
+    parameters {
+        string(name: 'RTM_TRIGGERED_BY', defaultValue: 'devopsuser8413', description: 'RTM user who requested this execution')
+    }
 
     /******************************************************
      🚀 PIPELINE STAGES
@@ -216,64 +216,33 @@ pipeline {
         }
 
         /**********************************************
-          Create Jira Test Execution
-        **********************************************/
-        stage('Create Jira Test Execution') {
-            steps {
-                echo "📘 Creating Jira Test Execution Issue..."
-
-                bat """
-                    "%VENV_PATH%\\Scripts\\python.exe" scripts/create_jira_execution.py ^
-                        --project "RT" ^
-                        --summary "Automated Test Execution - Build ${BUILD_NUMBER}" ^
-                        --output "rtm_jira_issue.txt"
-                """
-
-                script {
-                    env.JIRA_EXEC_KEY = readFile("rtm_jira_issue.txt").trim()
-                    echo "📘 Jira Execution Key: ${env.JIRA_EXEC_KEY}"
-                }
-            }
-        }
-
-        /**********************************************
          9️⃣ ATTACH PDF/HTML REPORTS TO RTM (via Jira)
         **********************************************/
         stage('Attach Reports to RTM') {
             steps {
-                echo "📚 Attaching HTML/PDF reports to Jira Test Execution..."
+                echo "📚 Attaching HTML/PDF reports to RTM..."
 
                 script {
+                    // Read version OUTSIDE of bat step, stored in Jenkins binding
+                    version = readFile("report/version.txt").trim()
+                    echo "ℹ Using report version: v${version}"
 
-                    // --- Use dynamically created Jira Test Execution key ---
-                    def jiraIssueKey = env.JIRA_EXEC_KEY
-                    echo "ℹ Using Jira Test Execution Key: ${jiraIssueKey}"
+                    pdfFile = "report/test_result_report_v${version}.pdf"
+                    htmlFile = "report/test_result_report_v${version}.html"
 
-                    // --- Read version for PDF/HTML file names ---
-                    def version = readFile('report/version.txt').trim()
-                    def pdfFile = "report/test_result_report_v${version}.pdf"
-                    def htmlFile = "report/test_result_report_v${version}.html"
-
-                    echo "📰 PDF: ${pdfFile}"
+                    echo "📄 PDF: ${pdfFile}"
                     echo "🌐 HTML: ${htmlFile}"
-
-                    // --- Execute Python attachment script ---
-                    def status = bat returnStatus: true, script: """
-                        "%VENV_PATH%\\Scripts\\python.exe" scripts\\rtm_attach_reports.py ^
-                            --issueKey "${jiraIssueKey}" ^
-                            --pdf "${pdfFile}" ^
-                            --html "${htmlFile}"
-                    """
-
-                    if (status != 0) {
-                        error("❌ RTM / Jira Attachment Failed — stopping pipeline")
-                    } else {
-                        echo "✅ Reports successfully attached to Jira execution!"
-                    }
                 }
+
+                // Use version (from outer scope) inside bat
+                bat """
+                    "%VENV_PATH%\\Scripts\\python.exe" scripts\\rtm_attach_reports.py ^
+                    --pdf "report/test_result_report_v${version}.pdf" ^
+                    --html "report/test_result_report_v${version}.html"
+                """
             }
         }
-
+        
         /**********************************************
          🔟 EMAIL REPORT TO STAKEHOLDERS
         **********************************************/
