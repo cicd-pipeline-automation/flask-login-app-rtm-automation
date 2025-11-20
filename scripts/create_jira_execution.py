@@ -1,143 +1,142 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
-"""
-================================================================
- 📘 CREATE JIRA TEST EXECUTION ISSUE
-----------------------------------------------------------------
- This script creates a Jira Test Execution issue and stores the
- resulting issue key into 'rtm_jira_issue.txt' for the pipeline.
-
- ➤ Requirements:
-   - ENV: JIRA_URL
-   - ENV: JIRA_USER
-   - ENV: JIRA_API_TOKEN
-   - pip install requests
-
- ➤ Example:
-   python create_jira_execution.py \
-        --project RT \
-        --summary "Automated Test Execution - Build 41" \
-        --output rtm_jira_issue.txt
-================================================================
-"""
-
 import os
-import sys
 import json
 import argparse
 import requests
+from requests.auth import HTTPBasicAuth
 
-# ----------------------------------------------------------------
-# Load Required Environment Variables
-# ----------------------------------------------------------------
-JIRA_URL       = os.getenv("JIRA_URL")
-JIRA_USER      = os.getenv("JIRA_USER")
-JIRA_API_TOKEN = os.getenv("JIRA_API_TOKEN")
+# --------------------------------------------------------
+#  🎯 Auto-detect Test Execution Issue Type Script
+# --------------------------------------------------------
 
-REQUIRED_ENV = {
-    "JIRA_URL": JIRA_URL,
-    "JIRA_USER": JIRA_USER,
-    "JIRA_API_TOKEN": JIRA_API_TOKEN,
-}
+def find_issue_type(jira_url, auth, project_key):
+    """
+    Auto-detects the correct Test Execution issue type from Jira.
+    Searches for:
+    - "Test Execution"
+    - "RTM Test Execution"
+    - Anything containing the words "Execution" or "Test"
+    """
 
-for key, value in REQUIRED_ENV.items():
-    if not value:
-        print(f"❌ ERROR: Missing required environment variable: {key}")
-        sys.exit(1)
+    print("\n🔍 Fetching available issue types for project:", project_key)
 
-# Ensure base URL has no trailing slash
-JIRA_URL = JIRA_URL.rstrip("/")
+    meta_url = f"{jira_url}/rest/api/3/issue/createmeta?projectKeys={project_key}&expand=projects.issuetypes"
+    resp = requests.get(meta_url, auth=auth)
+
+    if resp.status_code != 200:
+        print(f"❌ ERROR fetching issue types ({resp.status_code})")
+        print(resp.text)
+        return None
+
+    data = resp.json()
+    issue_types = data["projects"][0]["issuetypes"]
+
+    print("📘 Available Issue Types:")
+    for it in issue_types:
+        print(f"   - {it['name']}")
+
+    # Priority search terms
+    preferred = [
+        "RTM Test Execution",
+        "Test Execution",
+        "Execution"
+    ]
+
+    # 1️⃣ Try exact preferred matches
+    for p in preferred:
+        for it in issue_types:
+            if it["name"].lower() == p.lower():
+                print(f"\n✅ Selected IssueType (exact match): {it['name']}")
+                return it["name"]
+
+    # 2️⃣ Try partial match
+    for it in issue_types:
+        if "execution" in it["name"].lower():
+            print(f"\n✅ Selected IssueType (partial match): {it['name']}")
+            return it["name"]
+
+    print("\n❌ No valid Test Execution issue type found.")
+    print("   Please check Jira project configuration.\n")
+    return None
 
 
-# ----------------------------------------------------------------
-# Parse Arguments
-# ----------------------------------------------------------------
-parser = argparse.ArgumentParser(
-    description="Create a Jira Test Execution Issue"
-)
+def create_issue(jira_url, auth, project_key, summary, issuetype_name, output_file):
+    """
+    Creates the Jira issue with detected issuetype.
+    """
 
-parser.add_argument("--project", required=True, help="Jira Project Key")
-parser.add_argument("--summary", required=True, help="Issue Summary")
-parser.add_argument("--description", default="Automated Test Execution run via Jenkins Pipeline",
-                    help="Issue Description")
-parser.add_argument("--output", required=True, help="File to write the Jira Issue Key")
+    print("\n📝 Creating Jira Test Execution...")
+    print("🔗 URL       :", f"{jira_url}/rest/api/3/issue")
+    print("📘 Project   :", project_key)
+    print("📘 Summary   :", summary)
+    print("📘 IssueType :", issuetype_name)
 
-args = parser.parse_args()
-
-
-# ----------------------------------------------------------------
-# Prepare Jira Payload (Xray Test Execution or Custom Issue Type)
-# ----------------------------------------------------------------
-# 🔥 If your Jira uses Xray:
-ISSUE_TYPE_NAME = "Test Execution"
-
-payload = {
-    "fields": {
-        "project": {"key": args.project},
-        "summary": args.summary,
-        "description": args.description,
-        "issuetype": {"name": ISSUE_TYPE_NAME}
+    payload = {
+        "fields": {
+            "project": {"key": project_key},
+            "summary": summary,
+            "issuetype": {"name": issuetype_name},
+        }
     }
-}
 
-# ----------------------------------------------------------------
-# Send Request
-# ----------------------------------------------------------------
-api_url = f"{JIRA_URL}/rest/api/3/issue"
-
-print("\n📘 Creating Jira Test Execution...")
-print(f"🔗 URL       : {api_url}")
-print(f"📁 Project   : {args.project}")
-print(f"📝 Summary   : {args.summary}")
-print(f"🧩 IssueType : {ISSUE_TYPE_NAME}\n")
-
-try:
-    response = requests.post(
-        api_url,
-        data=json.dumps(payload),
-        headers={
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-        },
-        auth=(JIRA_USER, JIRA_API_TOKEN)
+    resp = requests.post(
+        f"{jira_url}/rest/api/3/issue",
+        headers={"Content-Type": "application/json"},
+        auth=auth,
+        data=json.dumps(payload)
     )
-except Exception as e:
-    print(f"❌ ERROR: Exception during Jira API call: {e}")
-    sys.exit(1)
 
+    if resp.status_code not in (200, 201):
+        print(f"\n❌ ERROR creating Jira Test Execution ({resp.status_code})")
+        print(resp.text)
+        return None
 
-# ----------------------------------------------------------------
-# Handle Jira API Response
-# ----------------------------------------------------------------
-if response.status_code not in (200, 201):
-    print(f"❌ ERROR creating Jira Test Execution ({response.status_code})")
-    try:
-        print(json.dumps(response.json(), indent=2))
-    except:
-        print(response.text)
-    sys.exit(1)
+    issue_key = resp.json()["key"]
 
-result = response.json()
-issue_key = result.get("key")
-
-if not issue_key:
-    print("❌ ERROR: Jira returned success but no issue key in response")
-    print(result)
-    sys.exit(1)
-
-print(f"✅ SUCCESS: Jira Test Execution created → {issue_key}")
-
-
-# ----------------------------------------------------------------
-# Save Jira Issue Key to File
-# ----------------------------------------------------------------
-try:
-    with open(args.output, "w", encoding="utf-8") as f:
+    with open(output_file, "w") as f:
         f.write(issue_key)
-except Exception as e:
-    print(f"❌ ERROR writing to file {args.output}: {e}")
-    sys.exit(1)
 
-print(f"💾 Saved Jira Test Execution Key → {args.output}")
-print("\n🎉 Jira Issue Creation Completed Successfully!\n")
+    print(f"\n🎉 Created Jira Test Execution: {issue_key}")
+    print(f"📄 Saved to {output_file}")
+
+    return issue_key
+
+
+# --------------------------------------------------------
+#  🔧 MAIN
+# --------------------------------------------------------
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--project", required=True)
+    parser.add_argument("--summary", required=True)
+    parser.add_argument("--output", required=True)
+    args = parser.parse_args()
+
+    jira_url = os.getenv("JIRA_URL")
+    jira_user = os.getenv("JIRA_USER")
+    jira_token = os.getenv("JIRA_API_TOKEN")
+
+    auth = HTTPBasicAuth(jira_user, jira_token)
+
+    # Auto-detect Test Execution issue type
+    issuetype = find_issue_type(jira_url, auth, args.project)
+
+    if not issuetype:
+        print("\n🚨 Could NOT determine valid IssueType for Test Execution.")
+        exit(1)
+
+    # Create Jira issue
+    result = create_issue(
+        jira_url=jira_url,
+        auth=auth,
+        project_key=args.project,
+        summary=args.summary,
+        issuetype_name=issuetype,
+        output_file=args.output
+    )
+
+    if not result:
+        exit(1)
+
+    print("\n✅ Jira Test Execution created successfully!")

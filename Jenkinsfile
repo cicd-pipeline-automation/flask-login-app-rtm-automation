@@ -206,13 +206,19 @@ pipeline {
         **********************************************/
         stage('Create Jira Test Execution') {
             steps {
-                echo "🧾 Creating Jira Test Execution issue..."
+                echo "📘 Creating Jira Test Execution Issue..."
+
                 bat """
-                    "%VENV_PATH%\\Scripts\\python.exe" scripts\\create_jira_execution.py ^
+                    "%VENV_PATH%\\Scripts\\python.exe" scripts/create_jira_execution.py ^
                         --project "%PROJECT_KEY%" ^
-                        --summary "Automated Test Execution - Build %BUILD_NUMBER%" ^
+                        --summary "Automated Test Execution - Build ${BUILD_NUMBER}" ^
                         --output "rtm_jira_issue.txt"
                 """
+
+                script {
+                    env.JIRA_EXEC_KEY = readFile("rtm_jira_issue.txt").trim()
+                    echo "📘 Jira Execution Key: ${env.JIRA_EXEC_KEY}"
+                }
             }
         }
 
