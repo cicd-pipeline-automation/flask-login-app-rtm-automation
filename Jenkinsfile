@@ -1,12 +1,5 @@
 /**************************************************************
  🏗️  JENKINS PIPELINE — FLASK LOGIN → RTM → JIRA → CONFLUENCE
- 📌 Purpose:
-     - Run automated tests
-     - Generate HTML/PDF reports
-     - Publish reports to Confluence
-     - Email results to stakeholders
-     - Upload JUnit results to RTM
-     - Attach PDF/HTML reports to RTM via Jira API
 **************************************************************/
 
 pipeline {
@@ -16,17 +9,17 @@ pipeline {
      🛠️ PIPELINE OPTIONS
     ******************************************************/
     options {
-        timestamps()                     // Show timestamps in logs
-        disableConcurrentBuilds()        // Avoid parallel overlapping runs
-        skipDefaultCheckout()            // We manually checkout using GitSCM
-        buildDiscarder(logRotator(numToKeepStr: '20')) // Keep last 20 builds
+        timestamps()
+        disableConcurrentBuilds()
+        skipDefaultCheckout()
+        buildDiscarder(logRotator(numToKeepStr: '20'))
     }
 
     /******************************************************
-     🔐 SECURE ENVIRONMENT VARIABLES (Credentials + Paths)
+     🔐 ENVIRONMENT VARIABLES
     ******************************************************/
     environment {
-        /* ===================== SMTP ====================== */
+        /* SMTP */
         SMTP_HOST       = credentials('smtp-host')
         SMTP_PORT       = '587'
         SMTP_USER       = credentials('smtp-user')
@@ -36,26 +29,26 @@ pipeline {
         REPORT_CC       = credentials('cc-email')
         REPORT_BCC      = credentials('bcc-email')
 
-        /* ================ Confluence Access =============== */
+        /* Confluence */
         CONFLUENCE_BASE  = credentials('confluence-base')
         CONFLUENCE_USER  = credentials('confluence-user')
         CONFLUENCE_TOKEN = credentials('confluence-token')
         CONFLUENCE_SPACE = "RTMTESTAUT"
         CONFLUENCE_TITLE = "Test Result Report"
 
-        /* ================== Jira + RTM ==================== */
-        JIRA_URL            = credentials('jira-base-url')
-        JIRA_USER           = credentials('jira-user')
-        JIRA_API_TOKEN      = credentials('jira-api-token')
+        /* Jira + RTM */
+        JIRA_URL        = credentials('jira-base-url')
+        JIRA_USER       = credentials('jira-user')
+        JIRA_API_TOKEN  = credentials('jira-api-token')
 
-        RTM_API_TOKEN       = credentials('rtm-api-key')
-        RTM_BASE_URL        = credentials('rtm-base-url')
-        PROJECT_KEY         = "RT"
-        
-        /* =================== GitHub ======================= */
+        RTM_API_TOKEN   = credentials('rtm-api-key')
+        RTM_BASE_URL    = credentials('rtm-base-url')
+        PROJECT_KEY     = "RT"
+
+        /* GitHub */
         GITHUB_CREDENTIALS = credentials('github-credentials')
 
-        /* ===================== Paths ====================== */
+        /* Paths */
         REPORT_DIR        = 'report'
         TEST_RESULTS_DIR  = 'report'
         TEST_RESULTS_ZIP  = 'test-results.zip'
@@ -63,18 +56,9 @@ pipeline {
         VENV_PATH         = "C:\\jenkins_work\\venv"
         PIP_CACHE_DIR     = "C:\\jenkins_home\\pip-cache"
 
-        PYTHONUTF8             = '1'
+        /* Python */
+        PYTHONUTF8 = '1'
         PYTHONLEGACYWINDOWSSTDIO = '1'
-
-        /* ===================== Test Case Action ====================== */
-        FORCE_FAIL = false
-    }
-
-    // /******************************************************
-    //  📝 USER PARAMETERS
-    // ******************************************************/
-    parameters {
-        string(name: 'RTM_TRIGGERED_BY', defaultValue: 'devopsuser8413', description: 'RTM user who requested this execution')
     }
 
     /******************************************************
@@ -100,7 +84,7 @@ pipeline {
         }
 
         /**********************************************
-         2️⃣ PYTHON SETUP (Persistent Virtualenv)
+         2️⃣ PYTHON SETUP
         **********************************************/
         stage('Setup Python') {
             steps {
@@ -108,7 +92,6 @@ pipeline {
                 bat """
                     @echo off
                     if not exist "%VENV_PATH%" (
-                        echo Creating virtual environment...
                         python -m venv "%VENV_PATH%"
                     )
                     "%VENV_PATH%\\Scripts\\pip.exe" install --upgrade pip setuptools wheel ^
@@ -118,7 +101,7 @@ pipeline {
         }
 
         /**********************************************
-         3️⃣ INSTALL PYTHON DEPENDENCIES
+         3️⃣ INSTALL DEPENDENCIES
         **********************************************/
         stage('Install Dependencies') {
             steps {
@@ -131,11 +114,11 @@ pipeline {
         }
 
         /**********************************************
-         4️⃣ RUN TESTS & GENERATE JUNIT XML
+         4️⃣ RUN TESTS
         **********************************************/
         stage('Run Tests & Generate JUnit') {
             steps {
-                echo "🧪 Running tests + generating JUnit report..."
+                echo "🧪 Running tests..."
                 bat """
                     if not exist report mkdir report
 
@@ -150,11 +133,11 @@ pipeline {
         }
 
         /**********************************************
-         5️⃣ GENERATE CUSTOM HTML+PDF REPORT
+         5️⃣ GENERATE CUSTOM REPORT
         **********************************************/
         stage('Generate Report') {
             steps {
-                echo "📝 Building enhanced HTML/PDF report..."
+                echo "📝 Generating enhanced HTML/PDF report..."
                 bat """
                     "%VENV_PATH%\\Scripts\\python.exe" scripts/generate_report.py
                 """
@@ -169,7 +152,7 @@ pipeline {
         }
 
         /**********************************************
-         6️⃣ PUBLISH REPORT TO CONFLUENCE
+         6️⃣ PUBLISH TO CONFLUENCE
         **********************************************/
         stage('Publish Report to Confluence') {
             steps {
@@ -181,7 +164,7 @@ pipeline {
         }
 
         /**********************************************
-         7️⃣ ARCHIVE TEST RESULTS
+         7️⃣ ZIP TEST RESULTS
         **********************************************/
         stage('Archive Test Results') {
             steps {
@@ -200,50 +183,61 @@ pipeline {
         }
 
         /**********************************************
-         8️⃣ UPLOAD RESULTS TO RTM (JUnit ZIP)
+         8️⃣ UPLOAD RESULTS TO RTM
         **********************************************/
         stage('Upload Results to RTM') {
             steps {
-                echo "📤 Uploading results to RTM..."
+                echo "📤 Uploading JUnit ZIP to RTM..."
                 bat """
                     "%VENV_PATH%\\Scripts\\python.exe" scripts\\rtm_upload_results.py ^
-                    --archive "test-results.zip" ^
-                    --rtm-base "%RTM_BASE_URL%" ^
-                    --project "%PROJECT_KEY%" ^
-                    --job-url "%BUILD_URL%"
+                        --archive "test-results.zip" ^
+                        --rtm-base "%RTM_BASE_URL%" ^
+                        --project "%PROJECT_KEY%" ^
+                        --job-url "%BUILD_URL%"
                 """
             }
         }
 
         /**********************************************
-        9️⃣ ATTACH PDF/HTML REPORTS TO RTM (via Jira)
+         ⭐  NEW: CREATE JIRA TEST EXECUTION
+        **********************************************/
+        stage('Create Jira Test Execution') {
+            steps {
+                echo "🧾 Creating Jira Test Execution issue..."
+                bat """
+                    "%VENV_PATH%\\Scripts\\python.exe" scripts\\create_jira_execution.py ^
+                        --project "%PROJECT_KEY%" ^
+                        --summary "Automated Test Execution - Build %BUILD_NUMBER%" ^
+                        --output "rtm_jira_issue.txt"
+                """
+            }
+        }
+
+        /**********************************************
+         9️⃣ ATTACH PDF/HTML TO JIRA
         **********************************************/
         stage('Attach Reports to RTM') {
             steps {
-                echo "📚 Attaching HTML/PDF reports to RTM..."
+                echo "📚 Attaching reports to Jira Test Execution..."
 
                 script {
-                    // --- Read version ---
                     def version = readFile("report/version.txt").trim()
-                    echo "ℹ Using report version: v${version}"
+                    echo "ℹ Version: v${version}"
 
-                    // --- Read RTM Test Execution issue key ---
-                    def rtmIssueKey = readFile('rtm_execution_key.txt').trim()
-                    echo "ℹ Using RTM Test Execution Key: ${rtmIssueKey}"
+                    def issueKey = readFile("rtm_jira_issue.txt").trim()
+                    echo "ℹ Jira Test Execution: ${issueKey}"
 
-                    // --- Build file names ---
                     def pdfFile  = "report/test_result_report_v${version}.pdf"
                     def htmlFile = "report/test_result_report_v${version}.html"
 
                     echo "📄 PDF: ${pdfFile}"
                     echo "🌐 HTML: ${htmlFile}"
 
-                    // --- Execute Jira attachment script ---
                     def status = bat(
                         returnStatus: true,
                         script: """
                             "%VENV_PATH%\\Scripts\\python.exe" scripts\\rtm_attach_reports.py ^
-                                --issueKey "${rtmIssueKey}" ^
+                                --issueKey "${issueKey}" ^
                                 --pdf "${pdfFile}" ^
                                 --html "${htmlFile}"
                         """
@@ -252,14 +246,14 @@ pipeline {
                     if (status != 0) {
                         error("❌ Jira Attachment Failed — stopping pipeline")
                     } else {
-                        echo "✅ Jira attachments uploaded successfully!"
+                        echo "✅ Attachments uploaded successfully!"
                     }
                 }
             }
         }
 
         /**********************************************
-         🔟 EMAIL REPORT TO STAKEHOLDERS
+         🔟 EMAIL REPORT
         **********************************************/
         stage('Email Report') {
             steps {
@@ -272,7 +266,7 @@ pipeline {
     }
 
     /******************************************************
-     🧹 POST-PIPELINE ACTIONS
+     🧹 FINAL ACTIONS
     ******************************************************/
     post {
         success {
