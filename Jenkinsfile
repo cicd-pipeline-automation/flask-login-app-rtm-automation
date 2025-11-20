@@ -51,8 +51,7 @@ pipeline {
         RTM_API_TOKEN       = credentials('rtm-api-key')
         RTM_BASE_URL        = credentials('rtm-base-url')
         PROJECT_KEY         = "RT"
-        RTM_TEST_EXEC_KEY   = "RT-55"
-
+        
         /* =================== GitHub ======================= */
         GITHUB_CREDENTIALS = credentials('github-credentials')
 
@@ -224,23 +223,27 @@ pipeline {
                 echo "📚 Attaching HTML/PDF reports to RTM..."
 
                 script {
-                    // --- Read version & construct file names ---
-                    def version   = readFile('report/version.txt').trim()
-                    echo "ℹ Using report version: v${version}"
 
-                    def pdfFile   = "report/test_result_report_v${version}.pdf"
-                    def htmlFile  = "report/test_result_report_v${version}.html"
+                    // --- Read dynamic RTM Test Execution key ---
+                    def rtmIssueKey = readFile('rtm_execution_key.txt').trim()
+                    echo "ℹ Using RTM Test Execution Key: ${rtmIssueKey}"
+
+                    // --- Read version & build file names ---
+                    def version = readFile('report/version.txt').trim()
+                    def pdfFile = "report/test_result_report_v${version}.pdf"
+                    def htmlFile = "report/test_result_report_v${version}.html"
 
                     echo "📰 PDF: ${pdfFile}"
                     echo "🌐 HTML: ${htmlFile}"
 
-                    // --- Execute Python script for attachment upload ---
+                    // --- Execute Python attachment script ---
                     def status = bat returnStatus: true, script: """
-                        "%VENV_PATH%\\Scripts\\python.exe" scripts\\rtm_attach_reports.py ^
-                            --issueKey "${RTM_TEST_EXEC_KEY}" ^
+                        "C:\\jenkins_work\\venv\\Scripts\\python.exe" scripts\\rtm_attach_reports.py ^
+                            --issueKey "${rtmIssueKey}" ^
                             --pdf "${pdfFile}" ^
                             --html "${htmlFile}"
                     """
+
                     if (status != 0) {
                         error("❌ RTM Attachment Failed — stopping pipeline")
                     } else {
