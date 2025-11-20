@@ -1,55 +1,83 @@
 #!/usr/bin/env python3
 import os
+import sys
 import argparse
 import requests
 
+# ==============================================
+#  Jira Attachments API — Production Ready
+# ==============================================
 
-def attach_file(rtm_base, jira_user, jira_token, exec_key, file_path):
+def attach_file_to_jira(issue_key, file_path, jira_url, jira_user, jira_token):
+    """
+    Uploads a file to Jira issue via REST API.
+    """
+
     if not os.path.exists(file_path):
-        print(f"❌ File not found: {file_path}")
+        print(f"❌ ERROR: File not found → {file_path}")
         return False
 
-    print(f"📎 Uploading attachment → {os.path.basename(file_path)}")
+    url = f"{jira_url}/rest/api/3/issue/{issue_key}/attachments"
+    headers = {
+        "X-Atlassian-Token": "no-check"
+    }
 
-    # RTM attachment API (NOT Jira issue attachment API)
-    url = f"{rtm_base}/rest/atm/1.0/testexecution/{exec_key}/attachments"
+    print(f"\n📄 Uploading attachment → {os.path.basename(file_path)}")
+    print(f"🔗 Jira API → {url}")
 
     with open(file_path, "rb") as f:
-        files = {"file": (os.path.basename(file_path), f)}
-        r = requests.post(url, auth=(jira_user, jira_token), files=files)
+        files = {"file": (os.path.basename(file_path), f, "application/octet-stream")}
+        response = requests.post(url, headers=headers, files=files, auth=(jira_user, jira_token))
 
-    if r.status_code in (200, 201):
-        print(f"✅ Uploaded: {os.path.basename(file_path)}")
+    if response.status_code == 200 or response.status_code == 201:
+        print(f"✅ Uploaded successfully → {os.path.basename(file_path)}")
         return True
-
-    print(f"❌ Upload failed ({r.status_code}) → {r.text}")
-    return False
+    else:
+        print(f"❌ Upload failed ({response.status_code}) → {response.text}")
+        return False
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--pdf", required=True)
-    parser.add_argument("--html", required=True)
-    args = parser.parse_args()
+    parser = argparse.ArgumentParser(description="Attach PDF/HTML Reports to Jira Test Execution")
+    parser.add_argument("--issueKey", required=True, help="Jira Issue Key (ex: RT-78)")
+    parser.add_argument("--pdf", required=True, help="Path to PDF report")
+    parser.add_argument("--html", required=True, help="Path to HTML report")
 
-    rtm_base = os.getenv("RTM_BASE_URL")
+    args = parser.parse_args()
+    issue_key = args.issueKey
+    pdf_file = args.pdf
+    html_file = args.html
+
+    print(f"\n🚀 Attaching reports to Jira Issue: {issue_key}")
+
+    # Read Jira environment variables
+    jira_url = os.getenv("JIRA_URL")
     jira_user = os.getenv("JIRA_USER")
     jira_token = os.getenv("JIRA_API_TOKEN")
 
-    if not (rtm_base and jira_user and jira_token):
-        raise SystemExit("❌ Missing RTM_BASE_URL / JIRA_USER / JIRA_API_TOKEN")
+    if not jira_url or not jira_user or not jira_token:
+        print("❌ ERROR: Missing Jira environment variables.")
+        sys.exit(1)
 
-    # Load RTM Execution Key
-    if not os.path.exists("rtm_execution_key.txt"):
-        raise SystemExit("❌ Missing rtm_execution_key.txt — RTM upload step failed")
+    print(f"\n🔧 Jira Base URL: {jira_url}")
+    print(f"👤 Jira User: {jira_user}")
 
-    with open("rtm_execution_key.txt", "r") as f:
-        exec_key = f.read().strip()
+    success = True
 
-    print(f"🚀 Attaching reports to RTM execution: {exec_key}")
+    # Attach PDF
+    if not attach_file_to_jira(issue_key, pdf_file, jira_url, jira_user, jira_token):
+        success = False
 
-    attach_file(rtm_base, jira_user, jira_token, exec_key, args.pdf)
-    attach_file(rtm_base, jira_user, jira_token, exec_key, args.html)
+    # Attach HTML
+    if not attach_file_to_jira(issue_key, html_file, jira_url, jira_user, jira_token):
+        success = False
+
+    if not success:
+        print("\n❌ ERROR: One or more attachments failed.")
+        sys.exit(1)
+
+    print("\n🎉 All attachments uploaded successfully to Jira!")
+    sys.exit(0)
 
 
 if __name__ == "__main__":
