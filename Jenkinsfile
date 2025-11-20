@@ -206,7 +206,7 @@ pipeline {
         **********************************************/
         stage('Create Jira Test Execution') {
             steps {
-                echo "📘 Creating Jira Test Execution Issue..."
+                echo "📘 Creating Jira Task (Team-Managed Project)..."
 
                 bat """
                     "%VENV_PATH%\\Scripts\\python.exe" scripts/create_jira_execution.py ^
@@ -217,7 +217,7 @@ pipeline {
 
                 script {
                     env.JIRA_EXEC_KEY = readFile("rtm_jira_issue.txt").trim()
-                    echo "📘 Jira Execution Key: ${env.JIRA_EXEC_KEY}"
+                    echo "📘 Jira Issue Created: ${env.JIRA_EXEC_KEY}"
                 }
             }
         }
