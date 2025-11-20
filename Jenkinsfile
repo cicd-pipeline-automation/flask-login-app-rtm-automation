@@ -171,29 +171,17 @@ pipeline {
         /**********************************************
          6️⃣ PUBLISH REPORT TO CONFLUENCE
         **********************************************/
-        // stage('Publish Report to Confluence') {
-        //     steps {
-        //         echo "🌐 Publishing report to Confluence..."
-        //         bat """
-        //             "%VENV_PATH%\\Scripts\\python.exe" scripts/publish_report_confluence.py
-        //         """
-        //     }
-        // }
-
-        /**********************************************
-         7️⃣ EMAIL REPORT TO STAKEHOLDERS
-        **********************************************/
-        stage('Email Report') {
+        stage('Publish Report to Confluence') {
             steps {
-                echo "📧 Sending email report..."
+                echo "🌐 Publishing report to Confluence..."
                 bat """
-                    "%VENV_PATH%\\Scripts\\python.exe" scripts/send_report_email.py
+                    "%VENV_PATH%\\Scripts\\python.exe" scripts/publish_report_confluence.py
                 """
             }
         }
 
         /**********************************************
-         8️⃣ ARCHIVE TEST RESULTS
+         7️⃣ ARCHIVE TEST RESULTS
         **********************************************/
         stage('Archive Test Results') {
             steps {
@@ -212,7 +200,7 @@ pipeline {
         }
 
         /**********************************************
-         9️⃣ UPLOAD RESULTS TO RTM (JUnit ZIP)
+         8️⃣ UPLOAD RESULTS TO RTM (JUnit ZIP)
         **********************************************/
         stage('Upload Results to RTM') {
             steps {
@@ -225,12 +213,10 @@ pipeline {
                     --job-url "%BUILD_URL%"
                 """
             }
-        }
-
-        
+        }    
 
         /**********************************************
-         🔟 ATTACH PDF/HTML REPORTS TO RTM (via Jira)
+         9️⃣ ATTACH PDF/HTML REPORTS TO RTM (via Jira)
         **********************************************/
         stage('Attach Reports to RTM') {
             steps {
@@ -253,6 +239,18 @@ pipeline {
                     "%VENV_PATH%\\Scripts\\python.exe" scripts\\rtm_attach_reports.py ^
                     --pdf "report/test_result_report_v${version}.pdf" ^
                     --html "report/test_result_report_v${version}.html"
+                """
+            }
+        }
+
+        /**********************************************
+         🔟 EMAIL REPORT TO STAKEHOLDERS
+        **********************************************/
+        stage('Email Report') {
+            steps {
+                echo "📧 Sending email report..."
+                bat """
+                    "%VENV_PATH%\\Scripts\\python.exe" scripts/send_report_email.py
                 """
             }
         }
