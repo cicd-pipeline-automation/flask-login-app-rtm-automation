@@ -181,6 +181,18 @@ pipeline {
         }
 
         /**********************************************
+         🔟 EMAIL REPORT TO STAKEHOLDERS
+        **********************************************/
+        stage('Email Report') {
+            steps {
+                echo "📧 Sending email report..."
+                bat """
+                    "%VENV_PATH%\\Scripts\\python.exe" scripts/send_report_email.py
+                """
+            }
+        }
+        
+        /**********************************************
          7️⃣ ARCHIVE TEST RESULTS
         **********************************************/
         stage('Archive Test Results') {
@@ -239,18 +251,6 @@ pipeline {
                     "%VENV_PATH%\\Scripts\\python.exe" scripts\\rtm_attach_reports.py ^
                     --pdf "report/test_result_report_v${version}.pdf" ^
                     --html "report/test_result_report_v${version}.html"
-                """
-            }
-        }
-
-        /**********************************************
-         🔟 EMAIL REPORT TO STAKEHOLDERS
-        **********************************************/
-        stage('Email Report') {
-            steps {
-                echo "📧 Sending email report..."
-                bat """
-                    "%VENV_PATH%\\Scripts\\python.exe" scripts/send_report_email.py
                 """
             }
         }
