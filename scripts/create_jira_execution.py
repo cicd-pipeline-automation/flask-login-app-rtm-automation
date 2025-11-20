@@ -6,70 +6,86 @@ import requests
 from requests.auth import HTTPBasicAuth
 
 # --------------------------------------------------------
-#  🎯 Auto-detect Test Execution Issue Type Script
+#  🔍 FIXED createmeta + AUTO-DETECT ISSUE TYPE
 # --------------------------------------------------------
 
+def fetch_createmeta(jira_url, auth, project_key):
+    """
+    Fetch project issue type metadata from Jira Cloud.
+    Handles multiple fallback attempts.
+    """
+
+    urls = [
+        # Full correct API for Jira Cloud (primary)
+        f"{jira_url}/rest/api/3/issue/createmeta"
+        f"?projectKeys={project_key}&expand=projects.issuetypes",
+
+        # Fallback 1 (some Jira sites require this)
+        f"{jira_url}/rest/api/3/issue/createmeta?projectKeys={project_key}",
+
+        # Fallback 2 (bare createmeta)
+        f"{jira_url}/rest/api/3/issue/createmeta"
+    ]
+
+    for u in urls:
+        print(f"\n🔍 Trying createmeta: {u}")
+        resp = requests.get(u, auth=auth)
+
+        # Must be valid JSON
+        try:
+            data = resp.json()
+        except:
+            print(f"⚠️ Invalid JSON response from Jira ({resp.status_code})")
+            continue
+
+        if "projects" in data and len(data["projects"]) > 0:
+            print("✅ createmeta returned valid project data")
+            return data
+
+    print("\n❌ Jira createmeta returned NO usable project metadata.")
+    return None
+
+
 def find_issue_type(jira_url, auth, project_key):
-    """
-    Auto-detects the correct Test Execution issue type from Jira.
-    Searches for:
-    - "Test Execution"
-    - "RTM Test Execution"
-    - Anything containing the words "Execution" or "Test"
-    """
+    """Auto-detect the best issue type for Test Execution."""
+    data = fetch_createmeta(jira_url, auth, project_key)
 
-    print("\n🔍 Fetching available issue types for project:", project_key)
-
-    meta_url = f"{jira_url}/rest/api/3/issue/createmeta?projectKeys={project_key}&expand=projects.issuetypes"
-    resp = requests.get(meta_url, auth=auth)
-
-    if resp.status_code != 200:
-        print(f"❌ ERROR fetching issue types ({resp.status_code})")
-        print(resp.text)
+    if not data:
+        print("🚨 Cannot continue — no issue types returned from Jira.")
         return None
 
-    data = resp.json()
     issue_types = data["projects"][0]["issuetypes"]
 
-    print("📘 Available Issue Types:")
+    print("\n📘 Available Issue Types:")
     for it in issue_types:
         print(f"   - {it['name']}")
 
-    # Priority search terms
+    # Priority search
     preferred = [
         "RTM Test Execution",
         "Test Execution",
         "Execution"
     ]
 
-    # 1️⃣ Try exact preferred matches
-    for p in preferred:
+    for pref in preferred:
         for it in issue_types:
-            if it["name"].lower() == p.lower():
+            if it["name"].lower() == pref.lower():
                 print(f"\n✅ Selected IssueType (exact match): {it['name']}")
                 return it["name"]
 
-    # 2️⃣ Try partial match
     for it in issue_types:
         if "execution" in it["name"].lower():
             print(f"\n✅ Selected IssueType (partial match): {it['name']}")
             return it["name"]
 
     print("\n❌ No valid Test Execution issue type found.")
-    print("   Please check Jira project configuration.\n")
     return None
 
 
 def create_issue(jira_url, auth, project_key, summary, issuetype_name, output_file):
-    """
-    Creates the Jira issue with detected issuetype.
-    """
-
+    """Create Jira Test Execution issue."""
     print("\n📝 Creating Jira Test Execution...")
-    print("🔗 URL       :", f"{jira_url}/rest/api/3/issue")
-    print("📘 Project   :", project_key)
-    print("📘 Summary   :", summary)
-    print("📘 IssueType :", issuetype_name)
+    print("📘 Using IssueType:", issuetype_name)
 
     payload = {
         "fields": {
@@ -83,11 +99,11 @@ def create_issue(jira_url, auth, project_key, summary, issuetype_name, output_fi
         f"{jira_url}/rest/api/3/issue",
         headers={"Content-Type": "application/json"},
         auth=auth,
-        data=json.dumps(payload)
+        data=json.dumps(payload),
     )
 
     if resp.status_code not in (200, 201):
-        print(f"\n❌ ERROR creating Jira Test Execution ({resp.status_code})")
+        print(f"\n❌ ERROR creating Jira issue ({resp.status_code})")
         print(resp.text)
         return None
 
@@ -119,21 +135,19 @@ if __name__ == "__main__":
 
     auth = HTTPBasicAuth(jira_user, jira_token)
 
-    # Auto-detect Test Execution issue type
     issuetype = find_issue_type(jira_url, auth, args.project)
 
     if not issuetype:
-        print("\n🚨 Could NOT determine valid IssueType for Test Execution.")
+        print("\n🚨 Unable to determine a valid issue type. Stopping.")
         exit(1)
 
-    # Create Jira issue
     result = create_issue(
-        jira_url=jira_url,
-        auth=auth,
-        project_key=args.project,
-        summary=args.summary,
-        issuetype_name=issuetype,
-        output_file=args.output
+        jira_url,
+        auth,
+        args.project,
+        args.summary,
+        issuetype,
+        args.output
     )
 
     if not result:
