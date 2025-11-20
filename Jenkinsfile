@@ -213,22 +213,46 @@ pipeline {
                     --job-url "%BUILD_URL%"
                 """
             }
-        }    
+        }
+
+        /**********************************************
+          Create Jira Test Execution
+        **********************************************/
+        stage('Create Jira Test Execution') {
+            steps {
+                echo "📘 Creating Jira Test Execution Issue..."
+
+                bat """
+                    "%VENV_PATH%\\Scripts\\python.exe" scripts/create_jira_execution.py ^
+                        --project "RT" ^
+                        --summary "Automated Test Execution - Build ${BUILD_NUMBER}" ^
+                        --output "rtm_jira_issue.txt"
+                """
+
+                script {
+                    env.JIRA_EXEC_KEY = readFile("rtm_jira_issue.txt").trim()
+                    echo "📘 Jira Execution Key: ${env.JIRA_EXEC_KEY}"
+                }
+            }
+        }
 
         /**********************************************
          9️⃣ ATTACH PDF/HTML REPORTS TO RTM (via Jira)
         **********************************************/
+/**********************************************
+ 9️⃣ ATTACH PDF/HTML REPORTS TO JIRA EXECUTION
+**********************************************/
         stage('Attach Reports to RTM') {
             steps {
-                echo "📚 Attaching HTML/PDF reports to RTM..."
+                echo "📚 Attaching HTML/PDF reports to Jira Test Execution..."
 
                 script {
 
-                    // --- Read dynamic RTM Test Execution key ---
-                    def rtmIssueKey = readFile('rtm_execution_key.txt').trim()
-                    echo "ℹ Using RTM Test Execution Key: ${rtmIssueKey}"
+                    // --- Use dynamically created Jira Test Execution key ---
+                    def jiraIssueKey = env.JIRA_EXEC_KEY
+                    echo "ℹ Using Jira Test Execution Key: ${jiraIssueKey}"
 
-                    // --- Read version & build file names ---
+                    // --- Read version for PDF/HTML file names ---
                     def version = readFile('report/version.txt').trim()
                     def pdfFile = "report/test_result_report_v${version}.pdf"
                     def htmlFile = "report/test_result_report_v${version}.html"
@@ -238,16 +262,16 @@ pipeline {
 
                     // --- Execute Python attachment script ---
                     def status = bat returnStatus: true, script: """
-                        "C:\\jenkins_work\\venv\\Scripts\\python.exe" scripts\\rtm_attach_reports.py ^
-                            --issueKey "${rtmIssueKey}" ^
+                        "%VENV_PATH%\\Scripts\\python.exe" scripts\\rtm_attach_reports.py ^
+                            --issueKey "${jiraIssueKey}" ^
                             --pdf "${pdfFile}" ^
                             --html "${htmlFile}"
                     """
 
                     if (status != 0) {
-                        error("❌ RTM Attachment Failed — stopping pipeline")
+                        error("❌ RTM / Jira Attachment Failed — stopping pipeline")
                     } else {
-                        echo "✅ RTM attachments uploaded successfully!"
+                        echo "✅ Reports successfully attached to Jira execution!"
                     }
                 }
             }
