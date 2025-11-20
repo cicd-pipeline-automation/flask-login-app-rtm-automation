@@ -239,9 +239,6 @@ pipeline {
         /**********************************************
          9️⃣ ATTACH PDF/HTML REPORTS TO RTM (via Jira)
         **********************************************/
-/**********************************************
- 9️⃣ ATTACH PDF/HTML REPORTS TO JIRA EXECUTION
-**********************************************/
         stage('Attach Reports to RTM') {
             steps {
                 echo "📚 Attaching HTML/PDF reports to Jira Test Execution..."

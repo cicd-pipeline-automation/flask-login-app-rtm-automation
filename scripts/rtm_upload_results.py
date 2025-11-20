@@ -4,14 +4,10 @@ import argparse
 import requests
 import json
 import time
-import sys
 
 
-# ============================================================
-# CLI parsing
-# ============================================================
 def parse_args():
-    p = argparse.ArgumentParser(description="Upload test results ZIP to RTM")
+    p = argparse.ArgumentParser(description="Upload test results to RTM")
     p.add_argument("--archive", required=True, help="ZIP file with test results")
     p.add_argument("--rtm-base", required=True, help="RTM base URL, e.g. https://rtm.example.com")
     p.add_argument("--project", required=True, help="RTM Project Key")
@@ -19,146 +15,64 @@ def parse_args():
     return p.parse_args()
 
 
-# ============================================================
-# Main Script
-# ============================================================
 def main():
     args = parse_args()
 
-    # ------------------------
-    # Validate RTM token
-    # ------------------------
     token = os.getenv("RTM_API_TOKEN")
     if not token:
-        print("❌ ERROR: Missing RTM_API_TOKEN environment variable")
-        sys.exit(1)
+        raise SystemExit("❌ Missing RTM_API_TOKEN environment variable")
 
-    # ------------------------
-    # Validate job url format
-    # ------------------------
     if not args.job_url.startswith(("http://", "https://")):
-        print("❌ ERROR: job-url must start with http:// or https://")
-        sys.exit(1)
+        raise SystemExit("❌ job-url must start with http:// or https://")
 
-    # Sanitize RTM base
-    rtm_base = args.rtm_base.rstrip("/")
+    url = f"{args.rtm_base}/api/v2/automation/import-test-results"
+    headers = {"Authorization": f"Bearer {token}"}
 
-    import_url = f"{rtm_base}/api/v2/automation/import-test-results"
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "Accept": "application/json"
-    }
+    print("🚀 Uploading ZIP to RTM...")
 
-    print("🚀 Starting RTM upload...")
+    with open(args.archive, "rb") as f:
+        files = {"file": f}
+        data = {
+            "projectKey": args.project,
+            "reportType": "JUNIT",
+            "jobUrl": args.job_url
+        }
+        response = requests.post(url, headers=headers, files=files, data=data)
 
-    # ------------------------
-    # Upload ZIP to RTM
-    # ------------------------
-    try:
-        with open(args.archive, "rb") as f:
-            files = {"file": f}
-            data = {
-                "projectKey": args.project,
-                "reportType": "JUNIT",
-                "jobUrl": args.job_url
-            }
-            response = requests.post(
-                import_url,
-                headers=headers,
-                files=files,
-                data=data,
-                timeout=60
-            )
-    except Exception as e:
-        print(f"❌ ERROR: Exception during upload → {e}")
-        sys.exit(1)
-
-    # ------------------------
-    # Handle Upload Response
-    # ------------------------
     if response.status_code not in (200, 202):
-        print("❌ ERROR: RTM Upload Failed")
+        print("❌ RTM Upload Failed")
         print("Status:", response.status_code)
         print("Response:", response.text)
-        sys.exit(1)
+        return
 
-    # Task ID can come as text OR JSON
-    try:
-        try:
-            task_id = response.json().get("taskId")
-        except:
-            task_id = response.text.strip()
-    except Exception:
-        print("❌ ERROR: Cannot extract task ID from RTM response")
-        sys.exit(1)
-
-    if not task_id:
-        print("❌ ERROR: RTM did not return a valid task ID")
-        sys.exit(1)
-
+    task_id = response.text.strip()
     print(f"📌 RTM Task ID: {task_id}")
 
-    status_url = f"{rtm_base}/api/v2/automation/import-status/{task_id}"
-
-    # ------------------------
-    # Poll RTM import status
-    # ------------------------
-    print("\n⏳ Checking import status...\n")
+    # Polling import status
+    status_url = f"{args.rtm_base}/api/v2/automation/import-status/{task_id}"
 
     while True:
-        try:
-            resp = requests.get(status_url, headers=headers, timeout=30)
-            data = resp.json()
-        except Exception as e:
-            print(f"❌ ERROR fetching import status → {e}")
-            sys.exit(1)
+        resp = requests.get(status_url, headers=headers)
+        data = resp.json()
+        print(f"➡️  RTM Status: {data.get('status')} (Progress: {data.get('progress')}%)")
 
-        status = data.get("status")
-        progress = data.get("progress", 0)
-
-        print(f"➡️  Status: {status} (Progress: {progress}%)")
-
-        if status in ("FAILED", "ERROR"):
-            print("❌ RTM Import Failed")
-            print(json.dumps(data, indent=2))
-            sys.exit(1)
-
-        if status != "IMPORTING":
+        if data.get("status") != "IMPORTING":
             break
-
         time.sleep(2)
 
-    print("\n🎉 RTM Import Complete:")
-    print(json.dumps(data, indent=2))
+    print("🎉 Import complete:", json.dumps(data, indent=2))
 
-    # ------------------------
-    # Capture RTM Execution Key
-    # ------------------------
-    test_execution_key = data.get("testExecutionKey")
+    # Save test execution key
+    test_exec = data.get("testExecutionKey")
+    if not test_exec:
+        print("⚠ No testExecutionKey returned, cannot write file.")
+        return
 
-    if not test_execution_key:
-        print("⚠️ WARNING: No testExecutionKey returned by RTM.")
-        sys.exit(0)
+    with open("rtm_execution_key.txt", "w") as f:
+        f.write(test_exec)
 
-    # Validate format (optional)
-    if not test_execution_key.startswith(("RT-", "TE-", "TEST-")):
-        print(f"⚠️ WARNING: testExecutionKey has unusual format ({test_execution_key})")
-
-    # Save to file for next stage (rtm_attach_reports.py)
-    try:
-        with open("rtm_execution_key.txt", "w") as f:
-            f.write(test_execution_key)
-        print(f"📝 Saved → rtm_execution_key.txt ({test_execution_key})")
-    except Exception as e:
-        print(f"❌ ERROR writing rtm_execution_key.txt → {e}")
-        sys.exit(1)
-
-    print("✅ RTM Upload script completed successfully.")
-    sys.exit(0)
+    print(f"📝 RTM execution key saved -> rtm_execution_key.txt ({test_exec})")
 
 
-# ============================================================
-# Entry
-# ============================================================
 if __name__ == "__main__":
     main()
