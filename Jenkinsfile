@@ -195,6 +195,10 @@ pipeline {
                     version = readFile("report/version.txt").trim()
                     echo "ℹ Detected report version: v${version}"
 
+                    // Read the test execution key created by RTM upload
+                    testExecKey = readFile("rtm_execution_key.txt").trim()
+                    echo "📌 Current Test Execution Key: ${testExecKey}"
+
                     /* 🔥 Export version for all later stages */
                     env.REPORT_VERSION = version
 
@@ -207,6 +211,7 @@ pipeline {
 
                 bat """
                     "%VENV_PATH%\\Scripts\\python.exe" scripts\\rtm_attach_reports.py ^
+                    --issueKey "${testExecKey}" ^
                     --pdf  "report/test_result_report_v${version}.pdf" ^
                     --html "report/test_result_report_v${version}.html"
                 """

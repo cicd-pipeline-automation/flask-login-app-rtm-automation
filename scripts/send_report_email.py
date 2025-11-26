@@ -33,52 +33,46 @@ CC  = parse_list(os.getenv("REPORT_CC", ""))
 BCC = parse_list(os.getenv("REPORT_BCC", ""))
 
 # ======================================================
-# Helpers: version, links
+# Helpers
 # ======================================================
 def read_version():
-    if not os.path.exists(VERSION_FILE):
-        return 1
     try:
-        with open(VERSION_FILE) as f:
-            return int(f.read().strip())
-    except Exception:
-        return 1
+        if os.path.exists(VERSION_FILE):
+            return int(open(VERSION_FILE).read().strip())
+    except:
+        pass
+    return 1
 
 def read_confluence_url():
     if os.path.exists(CONF_LINK_FILE):
-        with open(CONF_LINK_FILE) as f:
-            return f.read().strip()
+        return open(CONF_LINK_FILE).read().strip()
     return ""
 
 def read_jira_url():
     """
     Priority:
       1) JIRA_ISSUE_URL env (explicit)
-      2) JIRA_URL + /browse/<key from rtm_execution_key.txt>
+      2) Jira base + execution key
+      3) Nothing (return empty)
     """
     direct = os.getenv("JIRA_ISSUE_URL")
     if direct:
         return direct
 
     jira_base = os.getenv("JIRA_URL", "").rstrip("/")
-    if not jira_base:
-        return ""
-
-    if os.path.exists(RTM_EXEC_KEY_FILE):
-        with open(RTM_EXEC_KEY_FILE) as f:
-            key = f.read().strip()
-            if key:
-                return f"{jira_base}/browse/{key}"
+    if jira_base and os.path.exists(RTM_EXEC_KEY_FILE):
+        key = open(RTM_EXEC_KEY_FILE).read().strip()
+        if key:
+            return f"{jira_base}/browse/{key}"
 
     return ""
 
 # ======================================================
-# Test Summary via JUnit (same logic as Confluence)
+# Test Summary from junit.xml
 # ======================================================
 def extract_junit_summary():
     if not os.path.exists(JUNIT_FILE):
-        # Fallback – let caller decide how to show this.
-        return "UNKNOWN", "⚪ junit.xml not found", 0, 0, 0, 0
+        return "UNKNOWN", "⚪ junit.xml not found.", 0, 0, 0, 0
 
     tree = ET.parse(JUNIT_FILE)
     root = tree.getroot()
@@ -96,14 +90,17 @@ def extract_junit_summary():
             passed += 1
 
     total = passed + failed + errors + skipped
-    rate = (passed * 100.0 / total) if total > 0 else 0.0
+    rate = (passed * 100.0 / total) if total else 0
 
     status = "PASS" if failed == 0 and errors == 0 else "FAIL"
-    emoji  = "✅" if status == "PASS" else "❌"
+    emoji = "✅" if status == "PASS" else "❌"
 
     summary = (
-        f"{emoji} {passed} passed, ❌ {failed} failed, "
-        f"⚠️ {errors} errors, ⏭ {skipped} skipped — Pass rate: {rate:.1f}%"
+        f"{emoji} {passed} passed, "
+        f"❌ {failed} failed, "
+        f"⚠️ {errors} errors, "
+        f"⏭ {skipped} skipped — "
+        f"Pass rate: {rate:.1f}%"
     )
 
     return status, summary, passed, failed, errors, skipped
@@ -123,8 +120,12 @@ def send_email(pdf_path, version, status, summary, jira_url, conf_url):
         msg["Cc"] = ", ".join(CC)
     all_recipients = TO + CC + BCC
 
-    # ---- Plain text body ----
-    msg.set_content(f"""Test Status: {status}
+    jira_html = f'<a href="{jira_url}" target="_blank">Open Test Execution</a>' if jira_url else "No Jira URL available."
+    conf_html = f'<a href="{conf_url}" target="_blank">View Report in Confluence</a>' if conf_url else "No Confluence URL available."
+
+    # Text body
+    msg.set_content(f"""
+Test Status: {status}
 Summary: {summary}
 
 Jira Test Execution:
@@ -133,64 +134,60 @@ Jira Test Execution:
 Confluence Report:
 {conf_url or 'N/A'}
 
-The PDF report (v{version}) is attached.
+PDF report (v{version}) is attached.
 
 Regards,
 QA Automation System
 """)
 
-    # ---- HTML body ----
-    jira_html = (
-        f'<a href="{jira_url}" target="_blank">Open Test Execution</a>'
-        if jira_url else "No Jira URL available."
-    )
-    conf_html = (
-        f'<a href="{conf_url}" target="_blank">View full report in Confluence</a>'
-        if conf_url else "No Confluence URL available."
-    )
-
+    # HTML body
     msg.add_alternative(f"""
-    <html>
-      <body style="font-family: Arial, sans-serif;">
-        <h2>{emoji} Test Result: <span style="color:{color};">{status}</span> (v{version})</h2>
+<html>
+  <body style="font-family: Arial, sans-serif;">
+    <h2>{emoji} Test Result: <span style="color:{color};">{status}</span> (v{version})</h2>
 
-        <p><b>Summary:</b> {summary}</p>
+    <p><b>Summary:</b> {summary}</p>
 
-        <h3>🔗 Jira Test Execution</h3>
-        <p>{jira_html}</p>
+    <h3>🔗 Jira Test Execution</h3>
+    <p>{jira_html}</p>
 
-        <h3>📄 Confluence Report</h3>
-        <p>{conf_html}</p>
+    <h3>📄 Confluence Report</h3>
+    <p>{conf_html}</p>
 
-        <p>The PDF report is attached.</p>
+    <p>The PDF report is attached.</p>
 
-        <p>Regards,<br><b>QA Automation System</b></p>
-      </body>
-    </html>
-    """, subtype="html")
+    <p>Regards,<br><b>QA Automation System</b></p>
+  </body>
+</html>
+""", subtype="html")
 
-    # ---- Attach PDF ----
+    # Attach PDF
     if not os.path.exists(pdf_path):
         raise SystemExit(f"❌ PDF report not found: {pdf_path}")
 
     with open(pdf_path, "rb") as f:
-        msg.add_attachment(
-            f.read(),
-            maintype="application",
-            subtype="pdf",
-            filename=os.path.basename(pdf_path),
-        )
+        msg.add_attachment(f.read(),
+                           maintype="application",
+                           subtype="pdf",
+                           filename=os.path.basename(pdf_path))
 
-    # ---- Send ----
     print("📤 Sending email...")
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
-        if SMTP_PORT == 587:
-            s.starttls()
-        if SMTP_USER and SMTP_PASS:
-            s.login(SMTP_USER, SMTP_PASS)
-        s.send_message(msg, to_addrs=all_recipients)
-    print("✅ Email sent successfully.")
+        try:
+            if SMTP_PORT == 587:
+                s.starttls()
+        except:
+            pass
 
+        if SMTP_USER and SMTP_PASS:
+            try:
+                s.login(SMTP_USER, SMTP_PASS)
+            except:
+                print("⚠️ SMTP AUTH not supported. Continuing without login.")
+
+        s.send_message(msg, to_addrs=all_recipients)
+
+    print("✅ Email sent successfully.")
 
 # ======================================================
 # MAIN
