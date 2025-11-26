@@ -56,13 +56,15 @@ pipeline {
         GITHUB_CREDENTIALS = credentials('github-credentials')
 
         /* ===================== Paths ====================== */
-        REPORT_DIR        = 'report'
-        TEST_RESULTS_DIR  = 'report'
-        TEST_RESULTS_ZIP  = 'test-results.zip'
+        REPORT_DIR          = 'report'
+        TEST_RESULTS_DIR    = 'report'
+        TEST_RESULTS_ZIP    = 'test-results.zip'
+        PDF_REPORT_PATH     = "report/test_result_report_v${version}.pdf"
 
-        VENV_PATH         = "C:\\jenkins_work\\venv"
-        PIP_CACHE_DIR     = "C:\\jenkins_home\\pip-cache"
+        VENV_PATH           = "C:\\jenkins_work\\venv"
+        PIP_CACHE_DIR       = "C:\\jenkins_home\\pip-cache"
 
+        /* ===================== Python UTF8 Setup ===================== */
         PYTHONUTF8             = '1'
         PYTHONLEGACYWINDOWSSTDIO = '1'
 

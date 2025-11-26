@@ -1,11 +1,15 @@
+# Updated send_report_email.py with Jira Link Support
+# (Full rewritten script based on user request)
+
 import os
+import sys
 import smtplib
 from email.message import EmailMessage
-import re
+from email.utils import make_msgid
 
-# ================================
+# =============================================================
 # Environment Variables
-# ================================
+# =============================================================
 SMTP_HOST = os.getenv('SMTP_HOST')
 SMTP_PORT = int(os.getenv('SMTP_PORT', '587'))
 SMTP_USER = os.getenv('SMTP_USER')
@@ -17,110 +21,66 @@ BCC_RAW = os.getenv('REPORT_BCC', '')
 FROM_EMAIL = os.getenv('REPORT_FROM')
 
 CONFLUENCE_PAGE_URL_ENV = os.getenv("CONFLUENCE_PAGE_URL", "")
+JIRA_ISSUE_URL_ENV      = os.getenv("JIRA_ISSUE_URL", "")
 CONF_LINK_FILE = "report/confluence_url.txt"
 
-REPORT_DIR   = 'report'
-VERSION_FILE = os.path.join(REPORT_DIR, 'version.txt')
-BASE_NAME    = 'test_result_report'
-PYTEST_LOG   = os.path.join(REPORT_DIR, 'pytest_output.txt')
-
-
-# ==========================================================
-# Parse comma/semicolon separated lists
-# ==========================================================
-def parse_recipients(raw):
-    if not raw:
-        return []
-    parts = re.split(r'[;,]', raw)
-    return [p.strip() for p in parts if p.strip()]
-
-
-# ==========================================================
-# Read Confluence URL
-# ==========================================================
+# =============================================================
+# Helper Functions
+# =============================================================
 def read_confluence_url():
-    if CONFLUENCE_PAGE_URL_ENV:
-        return CONFLUENCE_PAGE_URL_ENV
-
+    """Reads the Confluence URL either from file or env"""
     if os.path.exists(CONF_LINK_FILE):
-        with open(CONF_LINK_FILE, "r") as f:
-            return f.read().strip()
+        return open(CONF_LINK_FILE).read().strip()
+    return CONFLUENCE_PAGE_URL_ENV or ""
+
+
+def read_jira_issue_url():
+    """Reads Jira Test Execution Key and builds full URL"""
+    # If explicit URL exists, use it
+    if JIRA_ISSUE_URL_ENV:
+        return JIRA_ISSUE_URL_ENV
+
+    # Otherwise, read execution key from file
+    if os.path.exists("rtm_execution_key.txt"):
+        key = open("rtm_execution_key.txt").read().strip()
+        jira_base = os.getenv("JIRA_URL", "").rstrip("/")
+        if jira_base:
+            return f"{jira_base}/browse/{key}"
 
     return ""
 
 
-# ==========================================================
-# Read version
-# ==========================================================
-def read_version():
-    if os.path.exists(VERSION_FILE):
-        with open(VERSION_FILE) as f:
-            try:
-                return int(f.read().strip())
-            except ValueError:
-                return 1
-    return 1
+def clean_list(raw):
+    return [e.strip() for e in raw.split(",") if e.strip()]
 
 
-# ==========================================================
-# Extract test results summary
-# ==========================================================
-def extract_test_status():
-    if not os.path.exists(PYTEST_LOG):
-        return "UNKNOWN", "⚪ No pytest_output.txt found."
-
-    with open(PYTEST_LOG, encoding="utf-8", errors="ignore") as f:
-        text = f.read()
-
-    passed = failed = errors = skipped = 0
-
-    if m := re.search(r"(\d+)\s+passed", text, re.I): passed = int(m.group(1))
-    if m := re.search(r"(\d+)\s+failed", text, re.I): failed = int(m.group(1))
-    if m := re.search(r"(\d+)\s+errors?", text, re.I): errors = int(m.group(1))
-    if m := re.search(r"(\d+)\s+skipped", text, re.I): skipped = int(m.group(1))
-
-    total = passed + failed + errors + skipped
-    rate = (passed / total * 100) if total else 0.0
-
-    status = "PASS" if failed == 0 and errors == 0 else "FAIL"
-    overall_emoji = "✅" if status == "PASS" else "❌"
-
-    # FIX: Use correct emojis for each metric
-    summary = (
-        f"SUMMARY: {overall_emoji}<br>"
-        f"✅ {passed} passed, "
-        f"❌ {failed} failed, "
-        f"⚠️ {errors} errors, "
-        f"⏭ {skipped} skipped — "
-        f"Pass rate: {rate:.1f}%"
-    )
-
-    return status, summary
-
-# ==========================================================
-# SEND ONE EMAIL TO ALL RECIPIENTS
-# ==========================================================
 def send_single_email_all(to_list, cc_list, bcc_list,
-                          pdf_report_path, version, status, summary, confluence_url):
+                          pdf_report_path, version, status, summary,
+                          confluence_url, jira_url):
 
+    if not os.path.exists(pdf_report_path):
+        sys.exit(f"❌ Missing report file: {pdf_report_path}")
+
+    msg = EmailMessage()
+    msg["Subject"] = f"Test Report v{version} - {status}"
+    msg["From"] = FROM_EMAIL
+    msg["To"] = ", ".join(to_list)
+    if cc_list:
+        msg["Cc"] = ", ".join(cc_list)
+    if bcc_list:
+        msg["Bcc"] = ", ".join(bcc_list)
+
+    # Emoji
     emoji = "✅" if status == "PASS" else "❌"
     color = "green" if status == "PASS" else "red"
 
-    msg = EmailMessage()
-    msg["Subject"] = f"{emoji} Test Result {status} (v{version})"
-    msg["From"] = FROM_EMAIL
-    msg["To"] = ", ".join(to_list)
-
-    if cc_list:
-        msg["Cc"] = ", ".join(cc_list)
-
-    # BCC is excluded from header intentionally
-    all_recipients = to_list + cc_list + bcc_list
-
-    # TEXT Body
+    # TEXT PART
     msg.set_content(f"""
 Test Status: {status}
 Summary: {summary}
+
+Jira Test Execution:
+{jira_url or 'N/A'}
 
 Confluence Report:
 {confluence_url or 'N/A'}
@@ -131,88 +91,68 @@ Regards,
 QA Automation System
 """)
 
-    # HTML Body
+    # HTML PART
     msg.add_alternative(f"""
     <html>
-        <body style="font-family:Arial,sans-serif;">
-            <h2>{emoji} Test Result:
-                <span style="color:{color}">{status}</span> (v{version})
-            </h2>
+        <body style='font-family: Arial, sans-serif;'>
+            <h2>{emoji} Test Result: <span style='color:{color}'>{status}</span> (v{version})</h2>
 
             <p><b>Summary:</b> {summary}</p>
 
+            <h3>🔗 Jira Test Execution</h3>
+            <p>{('<a href="' + jira_url + '" target="_blank">Open Test Execution</a>') if jira_url else 'No Jira URL available.'}</p>
+
             <h3>📄 Confluence Report</h3>
-            <p>
-                {'<a href="' + confluence_url + '" target="_blank">View full report in Confluence</a>' if confluence_url else 'No Confluence URL available.'}
-            </p>
+            <p>{('<a href="' + confluence_url + '" target="_blank">View Full Report in Confluence</a>') if confluence_url else 'No Confluence URL available.'}</p>
 
             <p>The PDF report is attached.</p>
-
             <p>Regards,<br><b>QA Automation System</b></p>
         </body>
     </html>
     """, subtype="html")
 
-    # Attach PDF
+    # ATTACH PDF
     with open(pdf_report_path, "rb") as f:
-        msg.add_attachment(
-            f.read(),
-            maintype="application",
-            subtype="pdf",
-            filename=os.path.basename(pdf_report_path),
-        )
+        file_data = f.read()
+        msg.add_attachment(file_data,
+                           maintype="application",
+                           subtype="pdf",
+                           filename=os.path.basename(pdf_report_path))
 
-    print("📤 Sending ONE EMAIL to all recipients...")
-    print("  TO :", to_list)
-    print("  CC :", cc_list)
-    print("  BCC:", "[hidden]" if bcc_list else "None")
+    # SEND
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        server.starttls()
+        server.login(SMTP_USER, SMTP_PASS)
+        server.send_message(msg)
 
-    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as s:
-        s.ehlo()
-
-        if SMTP_PORT == 587:
-            s.starttls()
-
-        if SMTP_USER and SMTP_PASS:
-            s.login(SMTP_USER, SMTP_PASS)
-
-        s.send_message(msg, to_addrs=all_recipients)
-
-    print("✅ Successfully sent **ONE email** to ALL recipients.\n")
+    print("📤 Email sent successfully!")
 
 
-# ==========================================================
+# =============================================================
 # MAIN
-# ==========================================================
+# =============================================================
 def main():
-    version = read_version()
-    pdf_report_path = os.path.join(REPORT_DIR, f"{BASE_NAME}_v{version}.pdf")
+    pdf_report_path = os.getenv("PDF_REPORT_PATH")
+    if not pdf_report_path:
+        sys.exit("❌ Missing PDF_REPORT_PATH env variable")
 
-    if not os.path.exists(pdf_report_path):
-        raise SystemExit(f"❌ PDF report not found: {pdf_report_path}")
+    version = os.getenv("REPORT_VERSION", "1")
+    summary = os.getenv("REPORT_SUMMARY", "No summary available")
+    status = os.getenv("REPORT_STATUS", "UNKNOWN")
 
-    status, summary = extract_test_status()
+    # URLs
     confluence_url = read_confluence_url()
+    jira_url = read_jira_issue_url()
 
-    to_list  = parse_recipients(TO_RAW)
-    cc_list  = parse_recipients(CC_RAW)
-    bcc_list = parse_recipients(BCC_RAW)
+    # Email lists
+    to_list  = clean_list(TO_RAW)
+    cc_list  = clean_list(CC_RAW)
+    bcc_list = clean_list(BCC_RAW)
 
-    if not to_list:
-        raise SystemExit("❌ REPORT_TO has no valid email addresses.")
-
-    send_single_email_all(
-        to_list, cc_list, bcc_list,
-        pdf_report_path, version, status, summary, confluence_url
-    )
+    send_single_email_all(to_list, cc_list, bcc_list,
+                          pdf_report_path, version, status, summary,
+                          confluence_url, jira_url)
 
 
-# ==========================================================
-# Entry
-# ==========================================================
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        print(f"❌ Email failed: {e}")
-        raise
+    main()
