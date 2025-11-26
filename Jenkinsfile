@@ -61,9 +61,6 @@ pipeline {
         TEST_RESULTS_DIR  = 'report'
         TEST_RESULTS_ZIP  = 'test-results.zip'
 
-        /* ⚠ Placeholder — dynamically overwritten later */
-        PDF_REPORT_PATH   = ""
-
         /* ---------------- Python Configuration ----------- */
         VENV_PATH         = "C:\\jenkins_work\\venv"
         PIP_CACHE_DIR     = "C:\\jenkins_home\\pip-cache"
