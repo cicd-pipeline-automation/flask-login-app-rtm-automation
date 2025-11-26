@@ -40,7 +40,7 @@ pipeline {
         CONFLUENCE_BASE  = credentials('confluence-base')
         CONFLUENCE_USER  = credentials('confluence-user')
         CONFLUENCE_TOKEN = credentials('confluence-token')
-        CONFLUENCE_SPACE = "DEMO"
+        CONFLUENCE_SPACE = "RTM-TEST"
         CONFLUENCE_TITLE = "Test Result Report"
 
         /* ================== Jira + RTM ==================== */
@@ -90,7 +90,7 @@ pipeline {
                 echo "📦 Checking out source code..."
                 checkout([
                     $class: 'GitSCM',
-                    branches: [[name: '*/main']],
+                    branches: [[name: '*/old-code-fix']],
                     userRemoteConfigs: [[
                         url: 'https://github.com/cicd-pipeline-automation/flask-login-app-rtm-automation.git',
                         credentialsId: 'github-credentials'
@@ -171,14 +171,14 @@ pipeline {
         /**********************************************
          6️⃣ PUBLISH REPORT TO CONFLUENCE
         **********************************************/
-        // stage('Publish Report to Confluence') {
-        //     steps {
-        //         echo "🌐 Publishing report to Confluence..."
-        //         bat """
-        //             "%VENV_PATH%\\Scripts\\python.exe" scripts/publish_report_confluence.py
-        //         """
-        //     }
-        // }
+        stage('Publish Report to Confluence') {
+            steps {
+                echo "🌐 Publishing report to Confluence..."
+                bat """
+                    "%VENV_PATH%\\Scripts\\python.exe" scripts/publish_report_confluence.py
+                """
+            }
+        }
 
         /**********************************************
          7️⃣ EMAIL REPORT TO STAKEHOLDERS
